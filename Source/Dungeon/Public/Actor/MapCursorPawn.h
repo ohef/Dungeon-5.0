@@ -33,7 +33,6 @@ protected:
   // Called when the game starts or when spawned
   virtual void BeginPlay() override;
   
-  bool snapUpdate(FVector PendingMovementInputVector, FVector LastMovementInputVector, TFunction<FVector()> consumeVector);
   void MoveRight(float Value);
   void MoveUp(float Value);
   void RotateCamera(float Value);

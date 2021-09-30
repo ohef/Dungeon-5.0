@@ -36,39 +36,6 @@ AMapCursorPawn::AMapCursorPawn()
 void AMapCursorPawn::BeginPlay()
 {
 	Super::BeginPlay();
-  // FVector lastMove = {0,0,0};
-  // FVector pending = {1,0,0};
-  // snapUpdate(pending, lastMove, [=] { return pending; });
-  // pending = {0,1,0};
-  // snapUpdate(pending, lastMove, [=] { return pending; });
-  // pending = {0,1,0};
-  // snapUpdate(pending, lastMove, [=] { return pending; });
-  // pending = {0,1,0};
-  // snapUpdate(pending, lastMove, [=] { return pending; });
-  // pending = {0,1,0};
-  // snapUpdate(pending, lastMove, [=] { return pending; });
-  // pending = {-1,-1,0};
-  // snapUpdate(pending, lastMove, [=] { return pending; });
-  // pending = {-1,-1,0};
-  // snapUpdate(pending, lastMove, [=] { return pending; });
-}
-
-bool AMapCursorPawn::snapUpdate(FVector PendingMovementInputVector, FVector LastMovementInputVector, TFunction<FVector()> consumeVector)
-{
-  FVector vector = LastMovementInputVector;
-  vector -= PendingMovementInputVector;
-  vector.Normalize();
-  UKismetSystemLibrary::PrintString(this, "From some shit " + vector.ToString(), true, false);
-  bool isSnap = vector.Size() >= 0.9;
-  if (isSnap) {
-    FVector inputVector = consumeVector();
-    inputVector.Normalize();
-    FIntPoint updatedPosition = FIntPoint(inputVector.X, inputVector.Y) + CurrentPosition;
-    GetWorld()->GetAuthGameMode<ADungeonGameModeBase>()->SubmitLinearAnimation(this, CurrentPosition, updatedPosition, 1.0);
-    CurrentPosition = updatedPosition;
-    return true;
-  }
-  return false;
 }
 
 void AMapCursorPawn::Tick(float DeltaTime)
@@ -77,9 +44,6 @@ void AMapCursorPawn::Tick(float DeltaTime)
 
   FVector PendingMovementInputVector = GetPendingMovementInputVector();
   if (PendingMovementInputVector.IsNearlyZero()) return;
-  
-  // if (snapUpdate(PendingMovementInputVector, GetLastMovementInputVector(),
-  //                [&] { return ConsumeMovementInputVector(); })) return;
 
   const int movementStrength = 2000;
   const FVector forwardVector = UKismetMathLibrary::ProjectVectorOnToPlane(Camera->GetForwardVector(), {0.0f, 0.0f, 1.0f});
