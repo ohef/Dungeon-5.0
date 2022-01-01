@@ -14,7 +14,6 @@ TArray<FIntPoint> manhattanReachablePoints(const FIntPoint& point, int xLimit, i
 
   TArray<FIntPoint> toReturn;
 
-
   for (int i = restrictedXAxis.GetLowerBoundValue(); i <= restrictedXAxis.GetUpperBoundValue(); i++)
     for (int j = restrictedYAxis.GetLowerBoundValue(); j <= restrictedYAxis.GetUpperBoundValue(); j++)
     {

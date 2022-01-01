@@ -1,6 +1,5 @@
 #include "CoreMinimal.h"
 #include "DungeonConstants.h"
-#include "Dungeon/DungeonGameModeBase.h"
 
 #include "TileVisualizationComponent.generated.h"
 
@@ -15,7 +14,7 @@ public:
 	{
 	}
 
-	void ShowTiles(const TArray<FIntPoint>& points)
+	void ShowTiles(const TSet<FIntPoint>& points)
 	{
 		for (auto point : points)
 		{

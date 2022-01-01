@@ -3,21 +3,7 @@
 #include "CoreMinimal.h"
 
 #include <Dungeon/Public/Logic/map.h>
-
-template<typename ReturnType, typename...>
-class ReducerVisitor {
-public:
-  virtual ~ReducerVisitor() {};
-  void Visit() {};
-};
-
-template<typename ReturnType, typename A, typename... ActionType>
-class ReducerVisitor<ReturnType, A, ActionType...> : ReducerVisitor<ReturnType,ActionType...> {
-public:
-  using ReducerVisitor<ReturnType,ActionType...>::Visit;
-
-  virtual ReturnType Visit(const A& action) const = 0;
-};
+#include <Dungeon/Private/Utility/Visitor.hpp>
 
 struct CommitAction;
 struct MovementAction;
@@ -30,31 +16,23 @@ struct MovementRecord;
 typedef ReducerVisitor<FDungeonLogicMap, WaitAction, MovementAction, CommitAction> ActionVisitor;
 typedef ReducerVisitor<void, WaitRecord, CommitRecord, MovementRecord> RecordVisitor;
 
-template<typename Derived, typename ReturnType>
-struct PayloadAccept {
-public:
-  virtual ReturnType Accept(const ActionVisitor& visitor) {
-    return visitor.Visit(*static_cast<Derived*>(this));
-  };
+struct InteractionInterface
+{
+  virtual ~InteractionInterface() = default;
+  virtual void consumeTarget(FIntPoint) {};
+  virtual void consumeUnit(FDungeonLogicUnit) {};
+  virtual bool readyForDispatch(){return true;};
 };
 
-struct MovementAction : public PayloadAccept<MovementAction, FDungeonLogicMap>  {
-public:
+struct MovementAction : TPayloadAccept<MovementAction, FDungeonLogicMap, ActionVisitor>, InteractionInterface {
   FIntPoint to;
   int unitID;
 };
 
-struct WaitAction : public PayloadAccept<WaitAction, FDungeonLogicMap> {
-public:
+struct WaitAction : TPayloadAccept<WaitAction, FDungeonLogicMap, ActionVisitor>, InteractionInterface {
   int unitID;
 };
 
-struct CommitAction : public PayloadAccept<CommitAction , FDungeonLogicMap> {
-public:
+struct CommitAction : TPayloadAccept<CommitAction , FDungeonLogicMap, ActionVisitor>, InteractionInterface {
   int unitID;
-};
-
-struct MovementRecord : public MovementAction {
-public:
-  FIntPoint from;
 };

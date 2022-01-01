@@ -13,7 +13,10 @@ public class Dungeon : ModuleRules
     PrivateDependencyModuleNames.AddRange(new string[] { "Json", "JsonUtilities" });
 
     // Uncomment if you are using Slate UI
-    // PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
+    PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "UMG" });
+
+    PrivateIncludePaths.AddRange(new string[] { "Dungeon/ThirdParty" }); 
+    Definitions.AddRange(new string[] { "IMMER_NO_FREE_LIST"     , "IMMER_NO_THREAD_SAFETY" , "IMMER_NO_THREAD_SAFETY" , }); 
 
     // Uncomment if you are using online features
     // PrivateDependencyModuleNames.Add("OnlineSubsystem");

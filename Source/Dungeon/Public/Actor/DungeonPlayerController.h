@@ -12,5 +12,13 @@
 UCLASS()
 class DUNGEON_API ADungeonPlayerController : public APlayerController
 {
-	GENERATED_BODY()
+  GENERATED_BODY()
+public:
+  explicit ADungeonPlayerController(const FObjectInitializer& ObjectInitializer)
+    : APlayerController(ObjectInitializer)
+  {
+    bBlockInput = false;
+  }
+
+  virtual void SetupInputComponent() override;
 };

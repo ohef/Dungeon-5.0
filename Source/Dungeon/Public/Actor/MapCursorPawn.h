@@ -6,13 +6,12 @@
 #include "GameFramework/Pawn.h"
 #include <Camera/CameraComponent.h>
 #include <Math/IntPoint.h>
-#include <Math/Vector2D.h>
-#include <functional>
 
 #include <Dungeon/ThirdParty/flowcpp/flow.h>
-#include <Dungeon/Public/Logic/map.h>
 #include <Dungeon/DungeonGameModeBase.h>
+#include <Dungeon/Public/Data/CursorState.h>
 
+#include "Components/CapsuleComponent.h"
 #include "MapCursorPawn.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCursorEvent, FIntPoint);
@@ -21,26 +20,26 @@ DECLARE_DELEGATE_OneParam(FQueryPoint, FIntPoint);
 
 UCLASS()
 class AMapCursorPawn : public APawn
-  //, public DispatchMixin<AMapCursorPawn>
 {
   GENERATED_BODY()
 
 public:
-  // Sets default values for this pawn's properties
-  AMapCursorPawn();
+  AMapCursorPawn(const FObjectInitializer& ObjectInitializer);
 
 protected:
   // Called when the game starts or when spawned
   virtual void BeginPlay() override;
-  
+
   void MoveRight(float Value);
   void MoveUp(float Value);
   void RotateCamera(float Value);
-  void Query();
-
-  FIntPoint CurrentPosition = FIntPoint(0, 0);
 
 public:
+  UFUNCTION(BlueprintCallable)
+  void Query();
+  
+  // TFunctionRef<void (FIntPoint)> QueryFunction = NULL;
+  
   FQueryPoint QueryPoint;
 
   virtual void Tick(float DeltaTime) override;
@@ -49,9 +48,24 @@ public:
 
   FCursorEvent CursorEvent;
 
-  UPROPERTY(VisibleAnywhere, BlueprintReadWrite) UCameraComponent* Camera;
+  UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+  UDrawFrustumComponent* FrustumComponent;
 
-  UPROPERTY(VisibleAnywhere) UStaticMeshComponent* CursorMesh;
+  UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+  FIntPoint CurrentPosition = FIntPoint(0, 0);
 
-  UPROPERTY(VisibleAnywhere) float discreteWorldScale;
+  UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+  UCameraComponent* Camera;
+
+  UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+  USceneComponent* Offset;
+  
+  UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+  USceneComponent* CursorMesh;
+
+  UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+  UCapsuleComponent* CursorCollider;
+
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  TEnumAsByte<CursorState> cursorState;
 };

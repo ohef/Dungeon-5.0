@@ -8,29 +8,35 @@
 #include <Core/Public/Containers/Array.h>
 
 #include "DungeonConstants.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/DrawFrustumComponent.h"
 
-#define CONSTANT_STRING(x) FName G ## x = #x
 
-CONSTANT_STRING(MoveRight);
-CONSTANT_STRING(MoveUp);
-CONSTANT_STRING(CameraRotate);
-
-AMapCursorPawn::AMapCursorPawn()
+AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 	PrimaryActorTick.bCanEverTick = true;
-  RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Scene"));
 
+  CursorCollider = CreateDefaultSubobject<UCapsuleComponent>(TEXT("BoxCollider"));
+  RootComponent = CursorCollider;
+
+  Offset = CreateDefaultSubobject<USceneComponent>(TEXT("MapCursorOffset"));
+  Offset->SetWorldLocation({0,0,0});
   CursorMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CursorGraphic"));
-  CursorMesh->SetupAttachment(RootComponent.Get());
+  CursorMesh->SetupAttachment(Offset);
+  CursorMesh->SetRelativeLocation({50, 50, 0});
 
   Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
-	Camera->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+  Camera->SetupAttachment(CursorCollider);
   Camera->bAutoActivate = true;
 	Camera->ComponentTags = TArray<FName> ();
 	Camera->ComponentTags.Reserve(1);
 	Camera->ComponentTags.Add(FName(TEXT("main")));
   Camera->SetRelativeLocation({ 1250,1250,1250 });
   Camera->SetRelativeRotation(UKismetMathLibrary::FindLookAtRotation(Camera->GetRelativeLocation(), FVector::ZeroVector));
+
+  FrustumComponent = CreateDefaultSubobject<UDrawFrustumComponent>(TEXT("UDrawFrustumComponent"));
+  
+  cursorState = CursorState::Free;
 }
 
 void AMapCursorPawn::BeginPlay()
@@ -48,19 +54,29 @@ void AMapCursorPawn::Tick(float DeltaTime)
   const int movementStrength = 2000;
   const FVector forwardVector = UKismetMathLibrary::ProjectVectorOnToPlane(Camera->GetForwardVector(), {0.0f, 0.0f, 1.0f});
   const FVector orthVector = UKismetMathLibrary::Cross_VectorVector(forwardVector, {0.0f, 0.0f, -1.0f});
-  const FVector inputVector = this->ConsumeMovementInputVector();
+  FVector inputVector = this->ConsumeMovementInputVector();
+  inputVector.Normalize();
   const FVector scaledInputVector = inputVector * movementStrength * DeltaTime;
 
-  this->AddActorWorldOffset(orthVector * scaledInputVector.X + forwardVector * scaledInputVector.Y, true);
-  const FVector currentLocation = this->GetActorLocation();
+  FHitResult OutSweepHitResult = FHitResult();
+  FVector DeltaLocation = orthVector * scaledInputVector.X + forwardVector * scaledInputVector.Y;
+  this->AddActorWorldOffset(DeltaLocation, true, &OutSweepHitResult);
+  if (OutSweepHitResult.GetActor() != NULL)
+  {
+    UE_LOG(LogTemp, Warning, TEXT("HEY %s"), *OutSweepHitResult.ToString());
+    this->AddActorWorldOffset(UKismetMathLibrary::ProjectVectorOnToPlane(DeltaLocation, OutSweepHitResult.ImpactNormal ), true, &OutSweepHitResult);
+  }
+  
+  FVector currentLocation = this->GetActorLocation();
   const FIntPoint quantized = FIntPoint{ static_cast<int32>(FMath::Floor(currentLocation.X / TILE_POINT_SCALE)),static_cast<int32>(FMath::Floor(currentLocation.Y / TILE_POINT_SCALE)) };
 
+  auto fromPoint = FVector(CurrentPosition) * TILE_POINT_SCALE + FVector{0, 0, 1.0};
+  auto toPoint = FVector(quantized) * TILE_POINT_SCALE + FVector{0, 0, 1.0};
+  Offset->SetWorldLocation(toPoint, true);
+  
   if (quantized == CurrentPosition)
     return;
 
-  auto fromPoint = (FVector(CurrentPosition) /*+ FVector{ 0.5,0.5,0 }*/) * TILE_POINT_SCALE + FVector{ 0,0,1.0 };
-  auto toPoint = (FVector(quantized) /*+ FVector{ 0.5,0.5,0 }*/) * TILE_POINT_SCALE + FVector{ 0,0,1.0 };
-  UE_LOG(LogTemp, VeryVerbose, TEXT("fromPoint: %s, toPoint: %s"), *fromPoint.ToString(), *toPoint.ToString());
   this->CursorEvent.Broadcast(quantized);
   CurrentPosition = quantized;
 }
@@ -83,7 +99,7 @@ void AMapCursorPawn::RotateCamera(float Value) {
 
 void AMapCursorPawn::Query()
 {
-  QueryPoint.Execute(CurrentPosition);
+  QueryPoint.ExecuteIfBound(CurrentPosition);
 }
 
 void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -93,4 +109,5 @@ void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
   PlayerInputComponent->BindAxis(GMoveRight, this, &AMapCursorPawn::MoveRight);
   PlayerInputComponent->BindAxis(GMoveUp, this, &AMapCursorPawn::MoveUp);
   PlayerInputComponent->BindAxis(GCameraRotate, this, &AMapCursorPawn::RotateCamera);
+  PlayerInputComponent->BindAction(GQuery, EInputEvent::IE_Pressed, this, &AMapCursorPawn::Query);
 }
