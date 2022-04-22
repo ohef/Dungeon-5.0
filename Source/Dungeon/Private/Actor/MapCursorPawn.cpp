@@ -11,7 +11,6 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/DrawFrustumComponent.h"
 
-
 AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -23,7 +22,7 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
   Offset->SetWorldLocation({0,0,0});
   CursorMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CursorGraphic"));
   CursorMesh->SetupAttachment(Offset);
-  CursorMesh->SetRelativeLocation({50, 50, 0});
+  // CursorMesh->SetRelativeLocation({50, 50, 0});
 
   Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
   Camera->SetupAttachment(CursorCollider);
@@ -35,8 +34,9 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
   Camera->SetRelativeRotation(UKismetMathLibrary::FindLookAtRotation(Camera->GetRelativeLocation(), FVector::ZeroVector));
 
   FrustumComponent = CreateDefaultSubobject<UDrawFrustumComponent>(TEXT("UDrawFrustumComponent"));
-  
-  cursorState = CursorState::Free;
+  MovementComponent = CreateDefaultSubobject<UFloatingPawnMovement>(TEXT("UFloatingPawnMovement"));
+  MovementComponent->Acceleration = 16000;
+  MovementComponent->Deceleration = 16000;
 }
 
 void AMapCursorPawn::BeginPlay()
@@ -48,45 +48,58 @@ void AMapCursorPawn::Tick(float DeltaTime)
 {
   Super::Tick(DeltaTime);
 
-  FVector PendingMovementInputVector = GetPendingMovementInputVector();
-  if (PendingMovementInputVector.IsNearlyZero()) return;
+  // FVector PendingMovementInputVector = GetPendingMovementInputVector();
+  // if (PendingMovementInputVector.IsNearlyZero()) return;
+  //
+  // const int movementStrength = 2000;
+  //
+  // FVector inputVector = this->ConsumeMovementInputVector();
+  // inputVector.Normalize();
+  //
+  // const FVector scaledInputVector = inputVector * movementStrength * DeltaTime;
 
-  const int movementStrength = 2000;
-  const FVector forwardVector = UKismetMathLibrary::ProjectVectorOnToPlane(Camera->GetForwardVector(), {0.0f, 0.0f, 1.0f});
-  const FVector orthVector = UKismetMathLibrary::Cross_VectorVector(forwardVector, {0.0f, 0.0f, -1.0f});
-  FVector inputVector = this->ConsumeMovementInputVector();
-  inputVector.Normalize();
-  const FVector scaledInputVector = inputVector * movementStrength * DeltaTime;
-
-  FHitResult OutSweepHitResult = FHitResult();
-  FVector DeltaLocation = orthVector * scaledInputVector.X + forwardVector * scaledInputVector.Y;
-  this->AddActorWorldOffset(DeltaLocation, true, &OutSweepHitResult);
-  if (OutSweepHitResult.GetActor() != NULL)
-  {
-    UE_LOG(LogTemp, Warning, TEXT("HEY %s"), *OutSweepHitResult.ToString());
-    this->AddActorWorldOffset(UKismetMathLibrary::ProjectVectorOnToPlane(DeltaLocation, OutSweepHitResult.ImpactNormal ), true, &OutSweepHitResult);
-  }
+  // FHitResult OutSweepHitResult = FHitResult();
+  // FVector DeltaLocation = scaledInputVector;
+  // this->AddActorWorldOffset(DeltaLocation, true, &OutSweepHitResult);
+  // if (OutSweepHitResult.GetActor() != NULL)
+  // {
+  //   UE_LOG(LogTemp, Warning, TEXT("HEY %s"), *OutSweepHitResult.ToString());
+  //   this->AddActorWorldOffset(UKismetMathLibrary::ProjectVectorOnToPlane(DeltaLocation, OutSweepHitResult.ImpactNormal ), true, &OutSweepHitResult);
+  // }
   
   FVector currentLocation = this->GetActorLocation();
-  const FIntPoint quantized = FIntPoint{ static_cast<int32>(FMath::Floor(currentLocation.X / TILE_POINT_SCALE)),static_cast<int32>(FMath::Floor(currentLocation.Y / TILE_POINT_SCALE)) };
-
-  auto fromPoint = FVector(CurrentPosition) * TILE_POINT_SCALE + FVector{0, 0, 1.0};
+  
+  const FIntPoint quantized = FIntPoint{
+    (FMath::CeilToInt((currentLocation.X - TILE_POINT_SCALE * .5) / TILE_POINT_SCALE)),
+    (FMath::CeilToInt((currentLocation.Y - TILE_POINT_SCALE * .5) / TILE_POINT_SCALE))
+  };
+  
+  // UE_LOG(LogTemp, Warning, TEXT("QUANTIZED_VALUEEE %s"), *quantized.ToString());
+  // auto fromPoint = FVector(CurrentPosition) * TILE_POINT_SCALE + FVector{0, 0, 1.0};
   auto toPoint = FVector(quantized) * TILE_POINT_SCALE + FVector{0, 0, 1.0};
   Offset->SetWorldLocation(toPoint, true);
   
   if (quantized == CurrentPosition)
     return;
-
-  this->CursorEvent.Broadcast(quantized);
+  
+  CursorEvent.Broadcast(quantized);
   CurrentPosition = quantized;
 }
 
+inline FVector4 AMapCursorPawn::ConvertInputToCameraPlaneInput(FVector inputVector)
+{
+  FVector cameraForward = Camera->GetForwardVector();
+  const FVector planeForward = UKismetMathLibrary::ProjectVectorOnToPlane(cameraForward, {0.0f, 0.0f, 1.0f});
+  const FVector planeOrthoganal = UKismetMathLibrary::Cross_VectorVector(planeForward, {0.0f, 0.0f, -1.0f});
+  return FMatrix(planeOrthoganal, planeForward, FVector::ZeroVector, FVector::ZeroVector).TransformVector(inputVector);
+}
+
 void AMapCursorPawn::MoveRight(float Value) {
-  this->AddMovementInput({ Value, 0.0,0.0 });
+  AddMovementInput(ConvertInputToCameraPlaneInput(FVector{Value, 0.0, 0.0}));
 }
 
 void AMapCursorPawn::MoveUp(float Value) {
-  this->AddMovementInput({ 0.0,Value,0.0 });
+  AddMovementInput(ConvertInputToCameraPlaneInput(FVector{ 0.0,Value,0.0 }));
 }
 
 void AMapCursorPawn::RotateCamera(float Value) {
@@ -99,7 +112,8 @@ void AMapCursorPawn::RotateCamera(float Value) {
 
 void AMapCursorPawn::Query()
 {
-  QueryPoint.ExecuteIfBound(CurrentPosition);
+  QueryCalled = true;
+  QueryInput.Broadcast(CurrentPosition);
 }
 
 void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "{38DA5773-416A-842F-C166-6092242E9308}",
+	"EngineAssociation": "{F38E8D8E-44A2-26F4-1F50-DB8BE2F08056}",
 	"Category": "",
 	"Description": "",
 	"Modules": [
@@ -21,6 +21,10 @@
 		{
 			"Name": "EditorScriptingUtilities",
 			"Enabled": true
+		},
+		{
+			"Name": "Synthesis",
+			"Enabled": false
 		}
 	]
 }

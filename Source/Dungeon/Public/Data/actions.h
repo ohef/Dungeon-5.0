@@ -13,7 +13,7 @@ typedef WaitAction WaitRecord;
 typedef CommitAction CommitRecord;
 struct MovementRecord;
 
-typedef ReducerVisitor<FDungeonLogicMap, WaitAction, MovementAction, CommitAction> ActionVisitor;
+typedef ReducerVisitor<bool, WaitAction, MovementAction, CommitAction> ActionVisitor;
 typedef ReducerVisitor<void, WaitRecord, CommitRecord, MovementRecord> RecordVisitor;
 
 struct InteractionInterface
@@ -24,15 +24,15 @@ struct InteractionInterface
   virtual bool readyForDispatch(){return true;};
 };
 
-struct MovementAction : TPayloadAccept<MovementAction, FDungeonLogicMap, ActionVisitor>, InteractionInterface {
+struct MovementAction : TPayloadAccept<MovementAction, bool, ActionVisitor>, InteractionInterface {
   FIntPoint to;
   int unitID;
 };
 
-struct WaitAction : TPayloadAccept<WaitAction, FDungeonLogicMap, ActionVisitor>, InteractionInterface {
+struct WaitAction : TPayloadAccept<WaitAction, bool, ActionVisitor>, InteractionInterface {
   int unitID;
 };
 
-struct CommitAction : TPayloadAccept<CommitAction , FDungeonLogicMap, ActionVisitor>, InteractionInterface {
+struct CommitAction : TPayloadAccept<CommitAction , bool, ActionVisitor>, InteractionInterface {
   int unitID;
 };

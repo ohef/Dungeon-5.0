@@ -9,14 +9,13 @@
 
 #include <Dungeon/ThirdParty/flowcpp/flow.h>
 #include <Dungeon/DungeonGameModeBase.h>
-#include <Dungeon/Public/Data/CursorState.h>
 
 #include "Components/CapsuleComponent.h"
+#include "GameFramework/FloatingPawnMovement.h"
 #include "MapCursorPawn.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCursorEvent, FIntPoint);
-
-DECLARE_DELEGATE_OneParam(FQueryPoint, FIntPoint);
+DECLARE_EVENT_OneParam(AMapCursorPawn, FQueryInput, FIntPoint);
 
 UCLASS()
 class AMapCursorPawn : public APawn
@@ -33,20 +32,28 @@ protected:
   void MoveRight(float Value);
   void MoveUp(float Value);
   void RotateCamera(float Value);
-
-public:
-  UFUNCTION(BlueprintCallable)
   void Query();
+  UPROPERTY()
+  bool QueryCalled = false;
   
-  // TFunctionRef<void (FIntPoint)> QueryFunction = NULL;
-  
-  FQueryPoint QueryPoint;
+public:
+  bool ConsumeQueryCalled()
+  {
+    auto current = QueryCalled;
+    QueryCalled = false;;
+    return current;
+  };
 
+  UFUNCTION(BlueprintCallable)
   virtual void Tick(float DeltaTime) override;
 
   virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+  FVector4 ConvertInputToCameraPlaneInput(FVector inputVector);
+
   FCursorEvent CursorEvent;
+  FQueryInput QueryInput;
+  UMaterial* interactionMaterial;
 
   UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
   UDrawFrustumComponent* FrustumComponent;
@@ -67,5 +74,5 @@ public:
   UCapsuleComponent* CursorCollider;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
-  TEnumAsByte<CursorState> cursorState;
+  UFloatingPawnMovement* MovementComponent ;
 };

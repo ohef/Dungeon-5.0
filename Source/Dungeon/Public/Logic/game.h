@@ -8,32 +8,8 @@
 #include <JsonUtilities/Public/JsonUtilities.h>
 #include <Runtime/Core/Public/Algo/Transform.h>
 
+#include "Dungeon/DungeonUnitActor.h"
 #include "game.generated.h"
-
-struct QueryResult
-{
-  TWeakPtr<FDungeonLogicUnit> unit;
-  TWeakPtr<FDungeonLogicTile> tile;
-};
-
-UENUM()
-enum EPlayerInteractionState
-{
-  MapCursor,
-  NavigatingMenus
-};
-
-USTRUCT()
-struct FMenuControl
-{
-  GENERATED_BODY()
-
-  EPlayerInteractionState MappedState;
-  TWeakPtr<SWidget> Parent;
-  TWeakPtr<SWidget> FirstChild;
-};
-
-// DECLARE_EVENT_OneParam(UDungeonLogicGame, UnitMovedEvent, const UnitMovementAction::Payload &)
 
 UCLASS()
 class UDungeonLogicGame : public UObject
@@ -45,7 +21,7 @@ public:
   FDungeonLogicMap map;
 
   UPROPERTY(VisibleAnywhere)
-  TMap<int, AActor*> unitIdToActor;
+  TMap<int, TWeakObjectPtr<ADungeonUnitActor>> unitIdToActor;
 
   UPROPERTY(VisibleAnywhere)
   FIntPoint cursorLocation;

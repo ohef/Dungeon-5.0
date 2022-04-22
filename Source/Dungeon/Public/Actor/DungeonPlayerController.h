@@ -14,11 +14,13 @@ class DUNGEON_API ADungeonPlayerController : public APlayerController
 {
   GENERATED_BODY()
 public:
-  explicit ADungeonPlayerController(const FObjectInitializer& ObjectInitializer)
-    : APlayerController(ObjectInitializer)
+  ADungeonPlayerController(const FObjectInitializer& ObjectInitializer)
+    : Super(ObjectInitializer)
   {
     bBlockInput = false;
   }
+
+  virtual void Tick(float DeltaSeconds) override;
 
   virtual void SetupInputComponent() override;
 };

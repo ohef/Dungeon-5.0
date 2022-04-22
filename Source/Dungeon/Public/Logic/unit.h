@@ -3,17 +3,28 @@
 #include <CoreMinimal.h>
 #include "Unit.generated.h"
 
-UENUM()
-enum UnitState {
+UENUM(BlueprintType)
+enum UnitState
+{
+  Free,
   ActionTaken
 };
 
-USTRUCT()
-struct FDungeonLogicUnit {
-  GENERATED_BODY();
+USTRUCT(BlueprintType)
+struct FDungeonLogicUnit
+{
+  GENERATED_BODY()
 
-  UPROPERTY() int id;
-  UPROPERTY() TEnumAsByte<UnitState> state;
-  UPROPERTY() FString name;
-  UPROPERTY() int movement;
+  UPROPERTY(BlueprintReadOnly, Category=DungeonUnit)
+  int id;
+  UPROPERTY(BlueprintReadOnly, Category=DungeonUnit)
+  int damage;
+  UPROPERTY(BlueprintReadOnly, Category=DungeonUnit)
+  int hitPoints;
+  UPROPERTY(BlueprintReadOnly, Category=DungeonUnit)
+  TEnumAsByte<UnitState> state;
+  UPROPERTY(BlueprintReadOnly, Category=DungeonUnit)
+  FString name;
+  UPROPERTY(BlueprintReadOnly, Category=DungeonUnit)
+  int movement;
 };

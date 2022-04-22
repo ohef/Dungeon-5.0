@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Components/Button.h"
 #include "Components/VerticalBox.h"
 #include "DungeonUserWidget.generated.h"
 
@@ -21,15 +20,17 @@ class DUNGEON_API UDungeonUserWidget : public UUserWidget
 {
   GENERATED_BODY()
 
+  DECLARE_DELEGATE_OneParam(FOnFocusLost, const FFocusEvent&)
+
 public:
-  UPROPERTY(EditAnywhere, BlueprintReadWrite)
-  UWidgetAnimation* TheAnimationWoo;
-  UPROPERTY(EditAnywhere, BlueprintReadWrite)
-  TWeakObjectPtr<UVerticalBox> Parent;
-  UPROPERTY(EditAnywhere, BlueprintReadWrite)
-  TWeakObjectPtr<UWidget> Child;
+  FOnFocusLost FocusLost;
+
+  UPROPERTY(meta=(BindWidgetAnim), Transient, EditAnywhere, BlueprintReadWrite)
+  UWidgetAnimation* OnStart;
+  UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
+  TWeakObjectPtr<UVerticalBox> MainMenu;
+  UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
+  TWeakObjectPtr<UWidget> Move;
 
   void Update(State state);
-protected:
-  virtual FReply NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent) override;
 };

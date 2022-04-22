@@ -8,13 +8,24 @@
 #include <Engine/Classes/Components/TimelineComponent.h>
 #include <Logic/game.h>
 
-#include "DungeonUserWidget.h"
+#include "SSingleSubmitHandlerWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/TileVisualizationComponent.h"
 #include "Curves/CurveVector.h"
+#include "GameFramework/GameState.h"
+#include "Widgets/Layout/SConstraintCanvas.h"
+
 #include "DungeonGameModeBase.generated.h"
 
-  typedef UTileVisualizationComponent* TileLayer;
+#define ReactStateVariable(SymbolType, SymbolName)\
+  SymbolType SymbolName;\
+  void set ## SymbolName( SymbolType val )\
+  {\
+    this->SymbolName = val;\
+    this->Reduce();\
+  }\
+  
+struct FAction;
 
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase
@@ -27,19 +38,11 @@ public:
   virtual void BeginPlay() override;
   virtual void Tick(float time) override;
 
-  int CurrentPlayer;
-  TQueue<TUniquePtr<FTimeline>> AnimationQueue;
-  
-  UDungeonUserWidget* MenuRef;
-  
-  UFUNCTION(BlueprintCallable)
-  void MoveUnit(FIntPoint point, int unitID);
-  
   UPROPERTY(EditAnywhere)
   TSubclassOf<UUserWidget> MenuClass;
   UPROPERTY(EditAnywhere)
   UClass* TileShowPrefab;
-  UPROPERTY()
+  UPROPERTY(EditAnywhere)
   UDungeonLogicGame* Game;
   UPROPERTY(EditAnywhere)
   UClass* UnitActorPrefab;
@@ -50,16 +53,37 @@ public:
   UPROPERTY(EditAnywhere)
   UMaterialInstance* UnitCommitMaterial;
 
-  TFunction<void(FIntPoint)> baseQueryHandler = TFunction<void(FIntPoint)>();
-  TFunction<void(FIntPoint)> actionQueryHandler = TFunction<void(FIntPoint)>();
+  enum GameState
+  {
+    Selecting,
+    SelectingAbility,
+    SelectingTarget,
+  };
 
-  bool isSelecting = false;
-  
-  TEnumAsByte<EPlayerInteractionState> interactionState;
-  
-  void RefocusThatShit();
+  TQueue<TUniquePtr<FTimeline>> AnimationQueue;
+  TSharedPtr<SConstraintCanvas> MainCanvas;
+  TSharedPtr<SButton> MoveButton;
+  TSharedPtr<SButton> WaitButton;
+  TSet<FIntPoint> lastMoveLocations;
 
-  TileLayer colorVisualizer(TSet<FIntPoint> targetsSet, FLinearColor color, AActor* manager);
+  ReactStateVariable(GameState, CurrentGameState)
+  ReactStateVariable(FIntPoint, CurrentPosition)
+
+  UTileVisualizationComponent* tileVisualizationComponent;
+  TQueue<TSharedPtr<FAction>> reactEventQueue;
+
+  void ReactMenu(bool visible);
+  void ReactVisualization(TSet<FIntPoint> moveLocations, ADungeonGameModeBase::GameState GameState);
+  void React();
+
+  template <typename TAction>
+  void Dispatch(TAction&& action)
+  {
+    reactEventQueue.Enqueue(MakeShared<TAction>(MoveTemp(action)));
+  }
+
+  void Reduce();
+  void RefocusMenu();
 
   template <typename T>
   void SubmitLinearAnimation(T* movable, FIntPoint from, FIntPoint to, float time)
@@ -101,4 +125,86 @@ public:
 
     this->AnimationQueue.Enqueue(MoveTemp(timeline));
   }
+};
+
+struct FAction
+{
+  virtual ~FAction() = default;
+
+  virtual void Apply(ADungeonGameModeBase*)
+  {
+  };
+};
+
+struct FChangeState : FAction
+{
+  explicit FChangeState(ADungeonGameModeBase::GameState UpdatedState)
+    : updatedState(UpdatedState)
+  {
+  }
+
+  ADungeonGameModeBase::GameState updatedState;
+
+  virtual void Apply(ADungeonGameModeBase* map) override
+  {
+    map->setCurrentGameState(updatedState);
+  }
+};
+
+struct FCombatAction : FAction
+{
+  FCombatAction(int InitiatorId, int TargetId)
+    : InitiatorId(InitiatorId),
+      TargetId(TargetId)
+  {
+  }
+
+  int InitiatorId;
+  int TargetId;
+
+  virtual void Apply(ADungeonGameModeBase* modeBase) override
+  {
+    FDungeonLogicUnit& initiator = modeBase->Game->map.loadedUnits.FindChecked(InitiatorId);
+    FDungeonLogicUnit& target = modeBase->Game->map.loadedUnits.FindChecked(TargetId);
+    target.hitPoints -= initiator.damage;
+  }
+};
+
+struct FMoveAction : FAction
+{
+  FMoveAction(int ID, const FIntPoint& Destination)
+    : id(ID),
+      Destination(Destination)
+  {
+  }
+
+  int id;
+  FIntPoint Destination;
+
+  bool canMove(ADungeonGameModeBase* gameModeBase, const TSet<FIntPoint>& lastMoveLocations)
+  {
+    auto& map = gameModeBase->Game->map;
+    auto possibleLocation = map.unitAssignment.FindKey(id);
+    if (possibleLocation == nullptr) return false;
+
+    if (lastMoveLocations.Contains(Destination))
+    {
+      auto unit = gameModeBase->Game->unitIdToActor.Find(id);
+      if (unit == nullptr)
+        return false;
+
+      return true;
+    }
+
+    return false;
+  }
+
+  virtual void Apply(ADungeonGameModeBase* modeBase) override
+  {
+    FDungeonLogicMap& DungeonLogicMap = modeBase->Game->map;
+    DungeonLogicMap.unitAssignment.Remove(*DungeonLogicMap.unitAssignment.FindKey(id));
+    DungeonLogicMap.unitAssignment.Add(Destination, id);
+    auto& foundUnit = DungeonLogicMap.loadedUnits.FindChecked(id);
+    foundUnit.state = UnitState::ActionTaken;
+  };
 };

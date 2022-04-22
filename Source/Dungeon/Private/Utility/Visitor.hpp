@@ -7,12 +7,12 @@ public:
   void Visit() {};
 };
 
-template<typename ReturnType, typename A, typename... ActionType>
-class ReducerVisitor<ReturnType, A, ActionType...> : ReducerVisitor<ReturnType,ActionType...> {
+template<typename TReturnType, typename A, typename... ActionType>
+class ReducerVisitor<TReturnType, A, ActionType...> : ReducerVisitor<TReturnType,ActionType...> {
 public:
-  using ReducerVisitor<ReturnType,ActionType...>::Visit;
+  using ReducerVisitor<TReturnType,ActionType...>::Visit;
 
-  virtual ReturnType Visit(const A& action) const = 0;
+  virtual TReturnType Visit(const A& action) const = 0;
 };
 
 template<typename TDerived, typename TReturnType, typename TVisitor>
