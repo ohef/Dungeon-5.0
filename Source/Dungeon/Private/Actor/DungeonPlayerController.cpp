@@ -6,6 +6,11 @@
 #include "DungeonConstants.h"
 #include "Dungeon/DungeonGameModeBase.h"
 
+ADungeonPlayerController::ADungeonPlayerController(const FObjectInitializer& ObjectInitializer): Super(ObjectInitializer)
+{
+	bBlockInput = false;
+}
+
 void ADungeonPlayerController::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);

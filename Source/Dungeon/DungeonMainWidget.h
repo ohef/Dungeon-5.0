@@ -4,19 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/Button.h"
 #include "Components/VerticalBox.h"
-#include "DungeonUserWidget.generated.h"
-
-struct State
-{
-  bool MenuVisibilty;
-};
+#include "DungeonMainWidget.generated.h"
 
 /**
  * 
  */
 UCLASS(Abstract)
-class DUNGEON_API UDungeonUserWidget : public UUserWidget
+class DUNGEON_API UDungeonMainWidget : public UUserWidget
 {
   GENERATED_BODY()
 
@@ -27,10 +23,13 @@ public:
 
   UPROPERTY(meta=(BindWidgetAnim), Transient, EditAnywhere, BlueprintReadWrite)
   UWidgetAnimation* OnStart;
+  
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
   TWeakObjectPtr<UVerticalBox> MainMenu;
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
-  TWeakObjectPtr<UWidget> Move;
-
-  void Update(State state);
+  TWeakObjectPtr<UButton> Attack;
+  UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
+  TWeakObjectPtr<UButton> Wait;
+  UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
+  TWeakObjectPtr<UButton> Move;
 };

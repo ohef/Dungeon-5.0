@@ -3,7 +3,7 @@
 #include <CoreMinimal.h>
 
 template <typename FIntPointerHolder = TArray<FIntPoint>>
-FIntPointerHolder manhattanReachablePoints(const FIntPoint& point, int xLimit, int yLimit, int distance)
+FIntPointerHolder manhattanReachablePoints(int xLimit, int yLimit, int distance, const FIntPoint& point)
 {
   int32 distanceHalved = distance / 2;
   auto xAxis = TRange<int>(point.X - distanceHalved, point.X + distanceHalved);

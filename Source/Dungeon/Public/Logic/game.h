@@ -28,17 +28,12 @@ public:
 
   UDungeonLogicGame()
   {
-    map.Width = 10;
-    map.Height = 10;
+    map.Width = 20;
+    map.Height = 20;
   }
 
   void Init()
   {
-    auto zaunit = MakeShared<FDungeonLogicUnit>();
-    zaunit->id = 1;
-    zaunit->name = TEXT("Test");
-    zaunit->movement = 3;
-
     auto zaTile = MakeShared<FDungeonLogicTile>();
     zaTile->id = 1;
     zaTile->name = TEXT("Grass");
@@ -52,7 +47,6 @@ public:
       return TTuple<FIntPoint, int>{p, zaTile->id};
     });
 
-    map.loadedUnits.Add(convertToIdTuple(*zaunit));
     map.loadedTiles.Add(convertToIdTuple(*zaTile));
   }
 };

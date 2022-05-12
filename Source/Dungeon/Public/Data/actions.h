@@ -1,38 +1,42 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Logic/Visitor.h"
 
-#include <Dungeon/Public/Logic/map.h>
-#include <Dungeon/Private/Utility/Visitor.hpp>
+struct FCommitAction;
+struct FMovementAction;
+struct FWaitAction;
+struct FAttackAction;
 
-struct CommitAction;
-struct MovementAction;
-struct WaitAction;
+typedef ReducerVisitor<FAttackAction, FWaitAction, FMovementAction, FCommitAction> ActionVisitor;
 
-typedef WaitAction WaitRecord;
-typedef CommitAction CommitRecord;
-struct MovementRecord;
+#define AcceptFunction(VisitorName) virtual void Accept(const VisitorName& visitor) { visitor.Visit(*this); }
 
-typedef ReducerVisitor<bool, WaitAction, MovementAction, CommitAction> ActionVisitor;
-typedef ReducerVisitor<void, WaitRecord, CommitRecord, MovementRecord> RecordVisitor;
-
-struct InteractionInterface
+struct FDungeonAbility : public TPayloadAccept<ActionVisitor>
 {
-  virtual ~InteractionInterface() = default;
-  virtual void consumeTarget(FIntPoint) {};
-  virtual void consumeUnit(FDungeonLogicUnit) {};
-  virtual bool readyForDispatch(){return true;};
+  FName Name;
 };
 
-struct MovementAction : TPayloadAccept<MovementAction, bool, ActionVisitor>, InteractionInterface {
+struct FMovementAction : public FDungeonAbility
+{
   FIntPoint to;
-  int unitID;
+  
+  AcceptFunction(ActionVisitor)
 };
 
-struct WaitAction : TPayloadAccept<WaitAction, bool, ActionVisitor>, InteractionInterface {
-  int unitID;
+struct FAttackAction : public FDungeonAbility
+{
+  int initialPower;
+  
+  AcceptFunction(ActionVisitor)
 };
 
-struct CommitAction : TPayloadAccept<CommitAction , bool, ActionVisitor>, InteractionInterface {
-  int unitID;
+struct FWaitAction : public FDungeonAbility
+{
+  AcceptFunction(ActionVisitor)
+};
+
+struct FCommitAction : public FDungeonAbility
+{
+  AcceptFunction(ActionVisitor)
 };

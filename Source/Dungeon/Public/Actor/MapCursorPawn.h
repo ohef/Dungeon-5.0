@@ -15,6 +15,7 @@
 #include "MapCursorPawn.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCursorEvent, FIntPoint);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCursorEventDynamic, FIntPoint, point);
 DECLARE_EVENT_OneParam(AMapCursorPawn, FQueryInput, FIntPoint);
 
 UCLASS()
@@ -26,13 +27,13 @@ public:
   AMapCursorPawn(const FObjectInitializer& ObjectInitializer);
 
 protected:
-  // Called when the game starts or when spawned
   virtual void BeginPlay() override;
 
   void MoveRight(float Value);
   void MoveUp(float Value);
   void RotateCamera(float Value);
   void Query();
+  
   UPROPERTY()
   bool QueryCalled = false;
   
@@ -52,8 +53,9 @@ public:
   FVector4 ConvertInputToCameraPlaneInput(FVector inputVector);
 
   FCursorEvent CursorEvent;
+	UPROPERTY(BlueprintAssignable, Category="MapCursorPawn")
+  FCursorEventDynamic DynamicCursorEvent;
   FQueryInput QueryInput;
-  UMaterial* interactionMaterial;
 
   UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
   UDrawFrustumComponent* FrustumComponent;

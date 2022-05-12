@@ -8,12 +8,12 @@
 #include <Engine/Classes/Components/TimelineComponent.h>
 #include <Logic/game.h>
 
-#include "SSingleSubmitHandlerWidget.h"
+#include "DungeonMainWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/TileVisualizationComponent.h"
 #include "Curves/CurveVector.h"
+#include "Engine/DataTable.h"
 #include "GameFramework/GameState.h"
-#include "Widgets/Layout/SConstraintCanvas.h"
 
 #include "DungeonGameModeBase.generated.h"
 
@@ -23,9 +23,62 @@
   {\
     this->SymbolName = val;\
     this->Reduce();\
-  }\
-  
+  }
+
 struct FAction;
+
+USTRUCT()
+struct FAttackResults
+{
+  GENERATED_BODY()
+
+  TSet<FIntPoint> AllAttackTiles;
+  TSet<FIntPoint> AttackableUnitTiles;
+};
+
+USTRUCT()
+struct FStructThing : public FTableRowBase
+{
+  GENERATED_BODY()
+
+  UPROPERTY(EditAnywhere, BlueprintReadOnly)
+  int ID;
+  UPROPERTY(EditAnywhere, BlueprintReadOnly)
+  int HP;
+  UPROPERTY(EditAnywhere, BlueprintReadOnly)
+  int Movement;
+};
+
+USTRUCT()
+struct FTiledLayer
+{
+  GENERATED_BODY()
+
+  UPROPERTY()
+  TArray<int> data;
+  UPROPERTY()
+  int height;
+  UPROPERTY()
+  int width;
+};
+
+USTRUCT()
+struct FTiledMap
+{
+  GENERATED_BODY()
+
+  UPROPERTY()
+  TArray<FTiledLayer> layers;
+};
+
+enum EGameState
+{
+  Selecting,
+  SelectingAbility,
+  SelectingTarget,
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAttackDelegate, FAttackResults const &, AttackResults);
 
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase
@@ -52,29 +105,40 @@ public:
   float MovementAnimationSpeedInSeconds;
   UPROPERTY(EditAnywhere)
   UMaterialInstance* UnitCommitMaterial;
+  UPROPERTY(EditAnywhere)
+  UDataTable* UnitTable;
 
-  enum GameState
-  {
-    Selecting,
-    SelectingAbility,
-    SelectingTarget,
-  };
+  TArray<FDungeonLogicUnit*> unitsArray;
+
+  UPROPERTY()
+  UDungeonMainWidget* MainWidget;
+  UPROPERTY()
+  UTileVisualizationComponent* tileVisualizationComponent;
+
+  FAttackDelegate AttackDelegate;
+
+  TSubclassOf<UDungeonMainWidget> MainWidgetClass;
 
   TQueue<TUniquePtr<FTimeline>> AnimationQueue;
-  TSharedPtr<SConstraintCanvas> MainCanvas;
-  TSharedPtr<SButton> MoveButton;
-  TSharedPtr<SButton> WaitButton;
   TSet<FIntPoint> lastMoveLocations;
+  int lastSeenId;
 
-  ReactStateVariable(GameState, CurrentGameState)
+  ReactStateVariable(EGameState, CurrentGameState)
   ReactStateVariable(FIntPoint, CurrentPosition)
 
-  UTileVisualizationComponent* tileVisualizationComponent;
   TQueue<TSharedPtr<FAction>> reactEventQueue;
 
   void ReactMenu(bool visible);
-  void ReactVisualization(TSet<FIntPoint> moveLocations, ADungeonGameModeBase::GameState GameState);
+  void ReactVisualization(TSet<FIntPoint> moveLocations, EGameState PassedGameState);
   void React();
+  void ReactTargeting();
+
+  FAttackResults AttackVisualization(int attackingUnitId);
+
+  UFUNCTION()
+  void HandleMove();
+  UFUNCTION()
+  void HandleWait();
 
   template <typename TAction>
   void Dispatch(TAction&& action)
@@ -136,14 +200,33 @@ struct FAction
   };
 };
 
+struct FSelectingGameState
+{
+  ADungeonGameModeBase& gameMode;
+  
+  void OnCursorPositionUpdate();
+  void Update();
+};
+
+struct FSelectingTargetGameState
+{
+  FDungeonLogicUnit* instigator;
+  UMaterial* tileMaterial;
+  TArray<FIntPoint> TilesExtent;
+  TArray<FIntPoint> PossibleTargets;
+
+  void Update();
+  void ApplyToTarget(FIntPoint point);
+};
+
 struct FChangeState : FAction
 {
-  explicit FChangeState(ADungeonGameModeBase::GameState UpdatedState)
+  explicit FChangeState(EGameState UpdatedState)
     : updatedState(UpdatedState)
   {
   }
 
-  ADungeonGameModeBase::GameState updatedState;
+  EGameState updatedState;
 
   virtual void Apply(ADungeonGameModeBase* map) override
   {

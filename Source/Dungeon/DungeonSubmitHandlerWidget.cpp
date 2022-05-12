@@ -19,6 +19,7 @@ void UDungeonSubmitHandlerWidget::NativeOnInitialized()
 {
   Super::NativeOnInitialized();
   InitialOuterCircleSize = CastChecked<UCanvasPanelSlot>(OuterCircle->Slot)->GetSize();
+  
   TScriptDelegate<> ScriptDelegate;
   ScriptDelegate.BindUFunction(this, "HandleHit");
   singleSubmitHandler->IntervalHit.Add(ScriptDelegate);

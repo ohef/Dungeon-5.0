@@ -2,10 +2,10 @@
 
 #include "DungeonSubmitHandlerWidget.h"
 #include "Actor/MapCursorPawn.h"
-#include "SSingleSubmitHandlerWidget.h"
 #include "Algo/Transform.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 float USingleSubmitHandler::GetCurrentTimeInTimeline()
 {
@@ -20,9 +20,7 @@ USingleSubmitHandler::USingleSubmitHandler(const FObjectInitializer& ObjectIniti
     TEXT("/Game/Blueprints/SubmitHandlerBlueprint"));
 
   materialBrush.SetResourceObject(NewMaterial.Object);
-
   HandlerWidgetClass = HandlerClass.Class;
-
   PrimaryComponentTick.bCanEverTick = true;
   PrimaryComponentTick.bStartWithTickEnabled = true;
 }
@@ -33,7 +31,18 @@ void USingleSubmitHandler::BeginPlay()
 
   HandlerWidget = NewObject<UDungeonSubmitHandlerWidget>(this, HandlerWidgetClass);
   APlayerController* InPlayerController = this->GetWorld()->GetFirstPlayerController();
-  Cast<AMapCursorPawn>(InPlayerController->GetPawn())->QueryInput.AddUObject(this, &USingleSubmitHandler::DoSubmit);
+  FQueryInput QueryInput = Cast<AMapCursorPawn>(InPlayerController->GetPawn())->QueryInput;
+  FDelegateHandle handle = QueryInput.AddUObject(this, &USingleSubmitHandler::DoSubmit);
+
+  stopCheckingQueries = [handle, QueryInput]() mutable
+  {
+    if (handle.IsValid())
+    {
+      QueryInput.Remove(handle);
+      handle.Reset();
+    }
+  };
+
   HandlerWidget->SetPlayerContext(FLocalPlayerContext(InPlayerController));
   HandlerWidget->singleSubmitHandler = this;
   HandlerWidget->Initialize();
@@ -45,8 +54,9 @@ void USingleSubmitHandler::BeginPlay()
   });
 
   FVector2D position;
+  FVector focusWorldLocation = this->GetOwner()->GetActorLocation();
   UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
-    InPlayerController, this->GetOwner()->GetActorLocation(),
+    InPlayerController, focusWorldLocation,
     position, true);
   CastChecked<UCanvasPanelSlot>(HandlerWidget->OuterCircle->Slot)->SetSize(position);
   HandlerWidget->AddToViewport();
@@ -57,28 +67,30 @@ void USingleSubmitHandler::BeginPlay()
   timeline.Play();
 }
 
-void USingleSubmitHandler::DoSubmit(FIntPoint)
+void USingleSubmitHandler::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-  bQueryCalled = true;
+  Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 
-void USingleSubmitHandler::TickComponent(float DeltaTime, ELevelTick TickType,
-                                         FActorComponentTickFunction* ThisTickFunction)
+void USingleSubmitHandler::DoSubmit(FIntPoint)
 {
-  Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-  timeline.TickTimeline(DeltaTime);
-
   FFloatInterval* found = nullptr;
   for (int i = 0; i < handlers.Num(); i++)
   {
     found = handlers[i].Contains(timeline.GetPlaybackPosition()) ? handlers.GetData() + i : nullptr;
   }
 
-  if (found != nullptr && bQueryCalled)
+  if (found != nullptr)
   {
     IntervalHit.Broadcast();
-    bQueryCalled = false;
     this->SetComponentTickEnabled(false);
+    stopCheckingQueries();
   }
+}
+
+void USingleSubmitHandler::TickComponent(float DeltaTime, ELevelTick TickType,
+                                         FActorComponentTickFunction* ThisTickFunction)
+{
+  Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+  timeline.TickTimeline(DeltaTime);
 }

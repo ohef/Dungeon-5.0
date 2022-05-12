@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "DungeonSubmitHandlerWidget.h"
+#include "Actor/MapCursorPawn.h"
 #include "Components/TimelineComponent.h"
 
 #include "SingleSubmitHandler.generated.h"
@@ -24,6 +25,8 @@ public:
   float pivot = 3.0;
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="IntervalHandler")
   TArray<float> fallOffsFromPivot{0.3f, .5f, .75f};
+  
+  TFunction<void()> stopCheckingQueries;
 
   UFUNCTION(BlueprintCallable)
   float GetCurrentTimeInTimeline();
@@ -33,16 +36,16 @@ public:
 
   UPROPERTY()
   UDungeonSubmitHandlerWidget* HandlerWidget;
-
   TSubclassOf<UDungeonSubmitHandlerWidget> HandlerWidgetClass;
 
   FTimeline timeline;
   FSlateBrush materialBrush;
 
+  virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+
   virtual void DoSubmit(FIntPoint);
 private:
   TArray<FFloatInterval> handlers;
-  bool bQueryCalled = false;
 
 public:
   // Sets default values for this component's properties

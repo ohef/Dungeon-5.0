@@ -1,197 +1,88 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-
 #include "DungeonGameModeBase.h"
 
-#include <Data/actions.h>
 #include <Logic/game.h>
 
-#include "DungeonUserWidget.h"
-#include "LocalizationTargetTypes.h"
+#include "DungeonMainWidget.h"
 #include "Actor/DungeonPlayerController.h"
 #include "Actor/MapCursorPawn.h"
+#include "Algo/Accumulate.h"
 #include "Algo/FindLast.h"
-#include "Blueprint/WidgetBlueprintLibrary.h"
+#include "Blueprint/WidgetTree.h"
+#include "Engine/DataTable.h"
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "Widgets/Layout/SConstraintCanvas.h"
-
-void ADungeonGameModeBase::Reduce()
-{
-  do
-  {
-    TSharedPtr<FAction> action;
-    if (reactEventQueue.Dequeue(action))
-    {
-      ADungeonGameModeBase* wow = this;
-      action->Apply(wow);
-    }
-    React();
-  }
-  while (!reactEventQueue.IsEmpty());
-}
 
 ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
+  static ConstructorHelpers::FClassFinder<UDungeonMainWidget> HandlerClass(TEXT("/Game/Blueprints/MainWidget"));
+  MainWidgetClass = HandlerClass.Class;
+
   PrimaryActorTick.bCanEverTick = true;
-  Game = CreateDefaultSubobject<UDungeonLogicGame>("own");
+  UnitTable = ObjectInitializer.CreateDefaultSubobject<UDataTable>(this, "Default");
+  UnitTable->RowStruct = FDungeonLogicUnit::StaticStruct();
+  Game = ObjectInitializer.CreateDefaultSubobject<UDungeonLogicGame>(this, "DefaultDebugMap");
   Game->Init();
-}
-
-int* lastSeenId;
-
-void ADungeonGameModeBase::React()
-{
-  AMapCursorPawn* mapPawn = static_cast<AMapCursorPawn*>(GetWorld()->GetFirstPlayerController()->GetPawn());
-  APlayerController* controller = this->GetNetOwningPlayer()->GetPlayerController(this->GetWorld());
-  const bool queryTriggered = mapPawn->ConsumeQueryCalled();
-
-  FDungeonLogicMap& DungeonLogicMap = Game->map;
-  TMap<FIntPoint, int>& unitAssignmentMap = DungeonLogicMap.unitAssignment;
-  TSet<FIntPoint> moveLocations;
-  auto foundId = unitAssignmentMap.Find(CurrentPosition);
-  bool unitCanTakeAction = foundId != NULL && DungeonLogicMap.loadedUnits[*foundId].state != ActionTaken;
-  if (unitCanTakeAction)
-  {
-    if (CurrentGameState != SelectingTarget)
-      lastSeenId = foundId;
-    auto& foundUnit = DungeonLogicMap.loadedUnits.FindChecked(*foundId);
-    moveLocations = manhattanReachablePoints<TSet<FIntPoint>>(
-      CurrentPosition, DungeonLogicMap.Width, DungeonLogicMap.Height, foundUnit.movement * 2);
-    moveLocations.Remove(CurrentPosition);
-  }
-
-  ReactVisualization(moveLocations, CurrentGameState);
-  for (auto LoadedUnit : DungeonLogicMap.loadedUnits)
-  {
-    TWeakObjectPtr<ADungeonUnitActor> DungeonUnitActor = Game->unitIdToActor.FindChecked(LoadedUnit.Key);
-    DungeonUnitActor->React(LoadedUnit.Value);
-    DungeonUnitActor->SetActorLocation(
-      FVector(*DungeonLogicMap.unitAssignment.FindKey(LoadedUnit.Key)) * TILE_POINT_SCALE);
-  }
-
-  if (CurrentGameState == GameState::SelectingAbility)
-  {
-    mapPawn->DisableInput(controller);
-  }
-  else
-  {
-    mapPawn->EnableInput(controller);
-    if (queryTriggered)
-    {
-      if (CurrentGameState == GameState::Selecting)
-      {
-        if (!unitCanTakeAction)
-          return;
-
-        TWeakObjectPtr<ADungeonUnitActor> DungeonUnitActor = Game->unitIdToActor.FindChecked(*foundId);
-        
-        Dispatch(FChangeState(GameState::SelectingAbility));
-      }
-      else if (CurrentGameState == GameState::SelectingTarget)
-      {
-        auto id = lastSeenId != NULL ? *lastSeenId : -1;
-        FMoveAction moveAction(id, (CurrentPosition));
-        if (moveAction.canMove(this, lastMoveLocations))
-        {
-          Dispatch(MoveTemp(moveAction));
-          Dispatch(FChangeState(GameState::Selecting));
-        }
-      }
-    }
-  }
-
-  ReactMenu(CurrentGameState == GameState::SelectingAbility);
-}
-
-void ADungeonGameModeBase::ReactVisualization(TSet<FIntPoint> moveLocations, GameState GameState)
-{
-  if (GameState == SelectingTarget)
-    return;
-  this->lastMoveLocations = moveLocations;
-  tileVisualizationComponent->Clear();
-  tileVisualizationComponent->ShowTiles(moveLocations);
-}
-
-void ADungeonGameModeBase::ReactMenu(bool visible)
-{
-  MainCanvas->SetVisibility(visible ? EVisibility::Visible : EVisibility::Collapsed);
-  RefocusMenu();
-}
-
-void ADungeonGameModeBase::RefocusMenu()
-{
-  if (MoveButton->HasUserFocus(0))
-    return;
-  FSlateApplication::Get().SetAllUserFocus(MoveButton);
-}
-
-void ADungeonGameModeBase::Tick(float deltaTime)
-{
-  Super::Tick(deltaTime);
-
-  if (this->AnimationQueue.IsEmpty())
-    return;
-
-  (*this->AnimationQueue.Peek())->TickTimeline(deltaTime);
 }
 
 void ADungeonGameModeBase::BeginPlay()
 {
   Super::BeginPlay();
 
-  // auto thing = FString();
-  // auto jsonObject = FJsonObjectConverter::UStructToJsonObject(FDungeonLogicMap{1, 1}).ToSharedRef();
-  // auto writer = TJsonStringWriter<>::Create(&thing);
-  // bool bSerialize = FJsonSerializer::Serialize(jsonObject, TJsonWriterFactory<>::Create(&thing));
-
-  auto kisamaaa = FString(R"###(
-        {
-         "data":[86, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 86, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 86, 0, 0, 86, 0, 0, 0, 0, 0, 86, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 86, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 86, 0, 0, 0, 86, 0, 86, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-         "height":10,
-         "id":1,
-         "name":"Tile Layer 1",
-         "opacity":1,
-         "type":"tilelayer",
-         "visible":true,
-         "width":10,
-         "x":0,
-         "y":0
-        }
-  )###");
-  TSharedPtr<FJsonObject> json;
-  FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(kisamaaa), json);
-
-  TArray<TSharedPtr<FJsonValue>> JsonValues = json->GetArrayField("data");
-
-  int width = json->GetNumberField("width");
-  int height = json->GetNumberField("height");
-
-  for (int i = 0; i < height; ++i)
-    for (int j = 0; j < width; ++j)
-    {
-      int dataIndex = i * height + j;
-      auto value = JsonValues[dataIndex]->AsNumber();
-      if (value > 0)
-      {
-        auto zaunit = FDungeonLogicUnit();
-        zaunit.id = dataIndex;
-        zaunit.name = TEXT("Test");
-        zaunit.movement = 3;
-
-        Game->map.loadedUnits.Add(zaunit.id, zaunit);
-
-        FIntPoint positionPlacement{i, j};
-        Game->map.unitAssignment.Add(positionPlacement, dataIndex);
-      }
-    }
-
-  for (auto tuple : Game->map.unitAssignment)
+  UnitTable->GetAllRows(TEXT(""), unitsArray);
+  TMap<int, FDungeonLogicUnit> loadedUnitTypes;
+  for (auto unit : unitsArray)
   {
-    auto unitActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnitActorPrefab, FVector::ZeroVector,
-                                                               FRotator::ZeroRotator);
-    Game->unitIdToActor.Add(tuple.Value, unitActor);
-    unitActor->SetActorLocation(TilePositionToWorldPoint(tuple.Key));
+    loadedUnitTypes.Add(unit->id, *unit);
+  }
+
+  FString jsonStringTMX;
+  if (FFileHelper::LoadFileToString(jsonStringTMX,
+                                    ToCStr(FPaths::Combine(FPaths::ProjectDir(), TEXT("mapassignments.tmj")))))
+  {
+    TSharedPtr<FJsonObject> jsonTMX;
+    TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<>::Create(jsonStringTMX);
+    if (FJsonSerializer::Deserialize(JsonReader, jsonTMX))
+    {
+      FTiledMap TiledMap;
+      FJsonObjectConverter::JsonObjectToUStruct<FTiledMap>(jsonTMX.ToSharedRef(), &TiledMap);
+
+      for (int i = 0; i < TiledMap.layers[0].height; ++i)
+        for (int j = 0; j < TiledMap.layers[0].width; ++j)
+        {
+          int dataIndex = i * TiledMap.layers[0].height + j;
+          auto value = TiledMap.layers[0].data[dataIndex];
+          if (value > 0 && loadedUnitTypes.Contains(value))
+          {
+            auto zaunit = loadedUnitTypes[value];
+            zaunit.id = dataIndex;
+            Game->map.loadedUnits.Add(zaunit.id, zaunit);
+
+            FIntPoint positionPlacement{i, j};
+            Game->map.unitAssignment.Add(positionPlacement, dataIndex);
+
+            auto unitActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnitActorPrefab, FVector::ZeroVector,
+                                                                       FRotator::ZeroRotator);
+            Game->unitIdToActor.Add(zaunit.id, unitActor);
+            unitActor->SetActorLocation(TilePositionToWorldPoint(positionPlacement));
+          }
+        }
+    }
+  }
+
+  FString Result;
+  FString Str = FPaths::Combine(FPaths::ProjectDir(), TEXT("UnitIds.csv"));
+  if (FFileHelper::LoadFileToString(Result, ToCStr(Str)))
+  {
+    UDataTable* DataTable = NewObject<UDataTable>();
+    DataTable->RowStruct = FStructThing::StaticStruct();
+    DataTable->CreateTableFromCSVString(Result);
+    TArray<FStructThing*> wow;
+    DataTable->GetAllRows<FStructThing>(TEXT("wew"), wow);
+    FStructThing* StructThing = DataTable->FindRow<FStructThing>(FName(TEXT("1")), TEXT("wow"));
+    FString TableAsCSV = DataTable->GetTableAsCSV();
+    FFileHelper::SaveStringToFile(TableAsCSV, ToCStr(FPaths::Combine(FPaths::ProjectDir(), TEXT("UnitIdsOutput.csv"))));
   }
 
   // FSimpleTileGraph gridGraph = FSimpleTileGraph(this->Game->map);
@@ -213,49 +104,215 @@ void ADungeonGameModeBase::BeginPlay()
     mapPawn->CursorEvent.AddUObject(this, &ADungeonGameModeBase::setCurrentPosition);
     mapPawn->QueryInput.AddUObject(this, &ADungeonGameModeBase::setCurrentPosition);
 
-    auto newStyle = FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText").Font;
-    newStyle.Size = 32;
+    MainWidget = CreateWidget<UDungeonMainWidget>(this->GetWorld()->GetFirstPlayerController(), MainWidgetClass);
+    MainWidget->Move->OnClicked.AddUniqueDynamic(this, &ADungeonGameModeBase::HandleMove);
+    MainWidget->Wait->OnClicked.AddUniqueDynamic(this, &ADungeonGameModeBase::HandleWait);
+    MainWidget->AddToViewport();
 
-    SAssignNew(MainCanvas, SConstraintCanvas)
-      + SConstraintCanvas::Slot()
-        .Anchors(FAnchors(0.0f, 0.8f, 1.0f, 1.0f))
-        .AutoSize(true)
-      [
-        SNew(SVerticalBox)
-        + SVerticalBox::Slot()
-        [SAssignNew(MoveButton, SButton)
-        .IsFocusable(true)
-        .HAlign(HAlign_Center)
-        .VAlign(VAlign_Center)
-          [SNew(STextBlock)
-          .Font(newStyle)
-          .Text(FText::FromString(TEXT("Move")))]]
-        + SVerticalBox::Slot()
-        [SAssignNew(WaitButton, SButton)
-        .HAlign(HAlign_Center)
-        .VAlign(VAlign_Center)
-          [SNew(STextBlock)
-          .Font(newStyle)
-          .Text(FText::FromString(TEXT("Wait")))]]
-      ];
-
-    MoveButton->SetOnClicked(FOnClicked::CreateLambda(
-        [this]() -> FReply
-        {
-          this->setCurrentGameState(GameState::SelectingTarget);
-          return FReply::Handled();
-        })
-    );
-
-    WaitButton->SetOnClicked(FOnClicked::CreateLambda(
-      [this]() -> FReply
-      {
-        this->setCurrentGameState(GameState::Selecting);
-        return FReply::Handled();
-      }
-    ));
-
-    GetWorld()->GetGameViewport()->AddViewportWidgetContent(MainCanvas.ToSharedRef());
-    this->setCurrentGameState(GameState::Selecting);
+    this->setCurrentGameState(EGameState::Selecting);
   }
+}
+
+void ADungeonGameModeBase::Reduce()
+{
+  do
+  {
+    TSharedPtr<FAction> action;
+    if (reactEventQueue.Dequeue(action))
+    {
+      ADungeonGameModeBase* wow = this;
+      action->Apply(wow);
+    }
+    React();
+  }
+  while (!reactEventQueue.IsEmpty());
+}
+
+void ADungeonGameModeBase::React()
+{
+  AMapCursorPawn* mapPawn = static_cast<AMapCursorPawn*>(GetWorld()->GetFirstPlayerController()->GetPawn());
+  APlayerController* controller = this->GetNetOwningPlayer()->GetPlayerController(this->GetWorld());
+  const bool queryTriggered = mapPawn->ConsumeQueryCalled();
+
+  FDungeonLogicMap& DungeonLogicMap = Game->map;
+  TMap<FIntPoint, int>& unitAssignmentMap = DungeonLogicMap.unitAssignment;
+  TSet<FIntPoint> moveLocations;
+  auto foundId = unitAssignmentMap.Contains(CurrentPosition) ? unitAssignmentMap.FindChecked(CurrentPosition) : -1;
+  auto foundUnit = DungeonLogicMap.loadedUnits.Find(foundId);
+  bool unitCanTakeAction = foundUnit != nullptr ? foundUnit->state != ActionTaken : false;
+  if (unitCanTakeAction)
+  {
+    if (CurrentGameState != SelectingTarget)
+      lastSeenId = foundId;
+    moveLocations = manhattanReachablePoints<TSet<FIntPoint>>(
+      DungeonLogicMap.Width, DungeonLogicMap.Height, foundUnit->movement * 2, CurrentPosition);
+    moveLocations.Remove(CurrentPosition);
+  }
+
+  ReactVisualization(moveLocations, CurrentGameState);
+  for (auto LoadedUnit : DungeonLogicMap.loadedUnits)
+  {
+    TWeakObjectPtr<ADungeonUnitActor> DungeonUnitActor = Game->unitIdToActor.FindChecked(LoadedUnit.Key);
+    DungeonUnitActor->React(LoadedUnit.Value);
+    DungeonUnitActor->SetActorLocation(
+      FVector(*DungeonLogicMap.unitAssignment.FindKey(LoadedUnit.Key)) * TILE_POINT_SCALE);
+  }
+
+  if (CurrentGameState == EGameState::SelectingAbility)
+  {
+    mapPawn->DisableInput(controller);
+  }
+  else
+  {
+    mapPawn->EnableInput(controller);
+    if (queryTriggered)
+    {
+      if (CurrentGameState == EGameState::Selecting && unitCanTakeAction)
+      {
+        auto attackWidget = StaticCastSharedRef<SButton>(MainWidget->Attack->TakeWidget());
+        attackWidget->SetOnClicked(FOnClicked::CreateLambda([this](int id)
+        {
+          FAttackResults results = AttackVisualization(id);
+          AttackDelegate.Broadcast(results);
+          Dispatch(FChangeState(EGameState::SelectingTarget));
+          return FReply::Handled();
+        }, foundUnit->id));
+        Dispatch(FChangeState(EGameState::SelectingAbility));
+      }
+      else if (CurrentGameState == EGameState::SelectingTarget)
+      {
+        auto id = lastSeenId;
+        FMoveAction moveAction(id, CurrentPosition);
+        if (moveAction.canMove(this, lastMoveLocations))
+        {
+          Dispatch(MoveTemp(moveAction));
+          Dispatch(FChangeState(EGameState::Selecting));
+        }
+      }
+    }
+  }
+
+  bool visible = CurrentGameState == EGameState::SelectingAbility;
+  if (visible)
+  {
+    MainWidget->MainMenu->SetVisibility(ESlateVisibility::Visible);
+  }
+  else
+  {
+    MainWidget->MainMenu->SetVisibility(ESlateVisibility::Collapsed);
+  }
+
+  RefocusMenu();
+}
+
+void FSelectingGameState::OnCursorPositionUpdate()
+{
+  // AMapCursorPawn* mapPawn = static_cast<AMapCursorPawn*>(GetWorld()->GetFirstPlayerController()->GetPawn());
+  // APlayerController* controller = this->GetNetOwningPlayer()->GetPlayerController(this->GetWorld());
+  // const bool queryTriggered = mapPawn->ConsumeQueryCalled();
+  //
+  // FDungeonLogicMap& DungeonLogicMap = Game->map;
+  // TMap<FIntPoint, int>& unitAssignmentMap = DungeonLogicMap.unitAssignment;
+  // TSet<FIntPoint> moveLocations;
+  // auto foundId = unitAssignmentMap.Contains(CurrentPosition) ? unitAssignmentMap.FindChecked(CurrentPosition) : -1;
+  // auto foundUnit = DungeonLogicMap.loadedUnits.Find(foundId);
+  // bool unitCanTakeAction = foundUnit != nullptr ? foundUnit->state != ActionTaken : false;
+  // if (unitCanTakeAction)
+  // {
+  //   moveLocations = manhattanReachablePoints<TSet<FIntPoint>>(
+  //     DungeonLogicMap.Width, DungeonLogicMap.Height, foundUnit->movement * 2, CurrentPosition);
+  //   moveLocations.Remove(CurrentPosition);
+  // }
+  //
+  // this->lastMoveLocations = moveLocations;
+  // gameMode. tileVisualizationComponent->Clear();
+  // gameMode.tileVisualizationComponent->ShowTiles(moveLocations);
+  //
+  // if (foundUnit->state)
+  // {
+  //   auto attackWidget = StaticCastSharedRef<SButton>(gameMode.MainWidget->Attack->TakeWidget());
+  //   attackWidget->SetOnClicked(FOnClicked::CreateLambda([this](int id)
+  //   {
+  //     auto results = gameMode.AttackVisualization(id);
+  //     gameMode.AttackDelegate.Broadcast(results);
+  //     gameMode.Dispatch(FChangeState(EGameState::SelectingTarget));
+  //     return FReply::Handled();
+  //   }, foundUnit->id));
+  //   gameMode.Dispatch(FChangeState(EGameState::SelectingAbility));
+  // }
+}
+
+void FSelectingGameState::Update()
+{
+}
+
+void ADungeonGameModeBase::ReactTargeting()
+{
+}
+
+void ADungeonGameModeBase::HandleMove()
+{
+  this->setCurrentGameState(EGameState::SelectingTarget);
+}
+
+void ADungeonGameModeBase::HandleWait()
+{
+  this->setCurrentGameState(EGameState::Selecting);
+}
+
+void ADungeonGameModeBase::ReactVisualization(TSet<FIntPoint> moveLocations, EGameState PassedGameState)
+{
+  if (PassedGameState == SelectingTarget)
+    return;
+  this->lastMoveLocations = moveLocations;
+  tileVisualizationComponent->Clear();
+  tileVisualizationComponent->ShowTiles(moveLocations);
+}
+
+void ADungeonGameModeBase::ReactMenu(bool visible)
+{
+  MainWidget->MainMenu->SetVisibility(visible ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+  RefocusMenu();
+}
+
+void ADungeonGameModeBase::RefocusMenu()
+{
+  if (MainWidget->Move->HasUserFocus(0))
+    return;
+  MainWidget->Move->SetFocus();
+}
+
+FAttackResults ADungeonGameModeBase::AttackVisualization(int attackingUnitId)
+{
+  FDungeonLogicMap DungeonLogicMap = Game->map;
+  auto attackingUnitPosition = DungeonLogicMap.unitAssignment.FindKey(attackingUnitId);
+  FDungeonLogicUnit attackingUnit = DungeonLogicMap.loadedUnits.FindChecked(attackingUnitId);
+  FAttackResults results;
+
+  results.AllAttackTiles = DungeonLogicMap.constrainedManhattanReachablePoints<TSet<FIntPoint>>(
+    attackingUnit.getAttackRange(), *attackingUnitPosition);
+  for (FIntPoint Point : results.AllAttackTiles)
+  {
+    if (DungeonLogicMap.unitAssignment.Contains(Point))
+    {
+      int unitId = DungeonLogicMap.unitAssignment[Point];
+      FDungeonLogicUnit unitAtTile = DungeonLogicMap.loadedUnits[unitId];
+      //TODO: Logic for determining friend foe?
+      if (unitAtTile.teamId != attackingUnit.teamId)
+      {
+        results.AttackableUnitTiles.Add(Point);
+      }
+    }
+  }
+  return results;
+}
+
+void ADungeonGameModeBase::Tick(float deltaTime)
+{
+  Super::Tick(deltaTime);
+
+  if (this->AnimationQueue.IsEmpty())
+    return;
+
+  (*this->AnimationQueue.Peek())->TickTimeline(deltaTime);
 }

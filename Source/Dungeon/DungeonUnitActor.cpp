@@ -15,7 +15,6 @@ ADungeonUnitActor::ADungeonUnitActor()
 void ADungeonUnitActor::BeginPlay()
 {
   Super::BeginPlay();
-  
 }
 
 // Called every frame
