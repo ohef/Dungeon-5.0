@@ -9,6 +9,7 @@
 #include <Logic/game.h>
 
 #include "DungeonMainWidget.h"
+#include "Actor/MapCursorPawn.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/TileVisualizationComponent.h"
 #include "Curves/CurveVector.h"
@@ -25,6 +26,7 @@
     this->Reduce();\
   }
 
+struct FSelectingTargetGameState;
 struct FAction;
 
 USTRUCT()
@@ -80,6 +82,46 @@ enum EGameState
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAttackDelegate, FAttackResults const &, AttackResults);
 
+class ADungeonGameModeBase;
+
+struct FState
+{
+  virtual ~FState() = default;
+
+  virtual void Enter()
+  {
+  };
+
+  virtual void Exit()
+  {
+  };
+};
+
+enum ETargetsAvailableId
+{
+  move
+};
+
+struct FSelectingGameState : FState
+{
+  ADungeonGameModeBase& gameMode;
+  FDungeonLogicUnit* foundUnit;
+  TMap<ETargetsAvailableId, TSet<FIntPoint>> targets;
+
+  explicit FSelectingGameState(ADungeonGameModeBase& GameMode)
+    : gameMode(GameMode)
+  {
+  }
+
+  void OnCursorPositionUpdate(FIntPoint);
+  void OnCursorQuery(FIntPoint);
+
+  TArray<FDelegateHandle> handles;
+  
+  virtual void Enter() override;
+  virtual void Exit() override;
+};
+
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase
 {
@@ -117,6 +159,8 @@ public:
 
   FAttackDelegate AttackDelegate;
 
+  TSharedPtr<FState> currentState;
+
   TSubclassOf<UDungeonMainWidget> MainWidgetClass;
 
   TQueue<TUniquePtr<FTimeline>> AnimationQueue;
@@ -131,7 +175,6 @@ public:
   void ReactMenu(bool visible);
   void ReactVisualization(TSet<FIntPoint> moveLocations, EGameState PassedGameState);
   void React();
-  void ReactTargeting();
 
   FAttackResults AttackVisualization(int attackingUnitId);
 
@@ -189,6 +232,97 @@ public:
 
     this->AnimationQueue.Enqueue(MoveTemp(timeline));
   }
+
+  AMapCursorPawn* GetMapCursorPawn()
+  {
+    UWorld* InWorld = this->GetWorld();
+    APlayerController* controller = InWorld->GetFirstPlayerController();
+    return Cast<AMapCursorPawn>(controller->GetPawn());
+  }
+
+  template <typename TToClass, typename TFromClass, typename... InArgs>
+  static auto MakeChangeState(TFromClass* from, InArgs&&... Args) -> TSharedPtr<TToClass>
+  {
+    if (from != nullptr)
+    {
+      from->Exit();
+    }
+    auto toRet = MakeShared<TToClass>(Forward<InArgs>(Args)...);
+    toRet->Enter();
+    return toRet;
+  }
+};
+
+struct FSelectingTargetGameState : FState
+{
+  ADungeonGameModeBase& GameModeBase;
+  FDungeonLogicUnit& instigator;
+  TSet<FIntPoint> TilesExtent;
+  // TSet<FIntPoint> PossibleTargets;
+  // UMaterial* tileMaterial;
+
+  FSelectingTargetGameState(ADungeonGameModeBase& GameModeBase, FDungeonLogicUnit& Instigator,
+                            const TSet<FIntPoint>& TilesExtent)
+    : GameModeBase(GameModeBase),
+      instigator(Instigator),
+      TilesExtent(TilesExtent)
+  {
+  }
+  
+  FDelegateHandle DelegateHandle;
+
+  virtual void Enter() override
+  {
+    DelegateHandle = GameModeBase.GetMapCursorPawn()->QueryInput.AddRaw(this, &FSelectingTargetGameState::OnCursorQuery);
+  }
+
+  virtual void Exit() override
+  {
+    GameModeBase.GetMapCursorPawn()->QueryInput.Remove(DelegateHandle);
+  }
+
+  void OnCursorQuery(FIntPoint pt);
+};
+
+struct FSelectingMenu : FState
+{
+  ADungeonGameModeBase& gameMode;
+  FDungeonLogicUnit* unit;
+  TMap<ETargetsAvailableId, TSet<FIntPoint>> targets;
+
+  FSelectingMenu(ADungeonGameModeBase& GameMode, FDungeonLogicUnit* Unit,
+                 TMap<ETargetsAvailableId, TSet<FIntPoint>>&& targets)
+    : gameMode(GameMode),
+      unit(Unit),
+      targets(targets)
+  {
+  }
+
+  virtual void Enter() override
+  {
+    AMapCursorPawn* MapCursorPawn = gameMode.GetMapCursorPawn();
+    MapCursorPawn->DisableInput(gameMode.GetWorld()->GetFirstPlayerController());
+    gameMode.MainWidget->MainMenu->SetVisibility(ESlateVisibility::Visible);
+    gameMode.RefocusMenu();
+    auto button = StaticCastSharedRef<SButton>(gameMode.MainWidget->Move->TakeWidget());
+    button->SetOnClicked(FOnClicked::CreateRaw(this, &FSelectingMenu::OnMoveSelected));
+  }
+
+  virtual void Exit() override
+  {
+    AMapCursorPawn* MapCursorPawn = gameMode.GetMapCursorPawn();
+    MapCursorPawn->EnableInput(gameMode.GetWorld()->GetFirstPlayerController());
+    gameMode.MainWidget->MainMenu->SetVisibility(ESlateVisibility::Collapsed);
+  }
+
+  FReply OnMoveSelected()
+  {
+    auto SelectingTargetGameState = gameMode.MakeChangeState<
+      FSelectingTargetGameState>(
+      gameMode.currentState.Get(), gameMode, *unit, targets[ETargetsAvailableId::move]);
+    gameMode.currentState = SelectingTargetGameState;
+    return FReply::Handled();
+  }
 };
 
 struct FAction
@@ -198,25 +332,6 @@ struct FAction
   virtual void Apply(ADungeonGameModeBase*)
   {
   };
-};
-
-struct FSelectingGameState
-{
-  ADungeonGameModeBase& gameMode;
-  
-  void OnCursorPositionUpdate();
-  void Update();
-};
-
-struct FSelectingTargetGameState
-{
-  FDungeonLogicUnit* instigator;
-  UMaterial* tileMaterial;
-  TArray<FIntPoint> TilesExtent;
-  TArray<FIntPoint> PossibleTargets;
-
-  void Update();
-  void ApplyToTarget(FIntPoint point);
 };
 
 struct FChangeState : FAction

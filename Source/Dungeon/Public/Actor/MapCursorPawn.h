@@ -7,9 +7,6 @@
 #include <Camera/CameraComponent.h>
 #include <Math/IntPoint.h>
 
-#include <Dungeon/ThirdParty/flowcpp/flow.h>
-#include <Dungeon/DungeonGameModeBase.h>
-
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/FloatingPawnMovement.h"
 #include "MapCursorPawn.generated.h"
@@ -33,7 +30,7 @@ protected:
   void MoveUp(float Value);
   void RotateCamera(float Value);
   void Query();
-  
+
   UPROPERTY()
   bool QueryCalled = false;
   

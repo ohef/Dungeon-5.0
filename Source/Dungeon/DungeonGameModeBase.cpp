@@ -101,11 +101,13 @@ void ADungeonGameModeBase::BeginPlay()
   AMapCursorPawn* mapPawn = static_cast<AMapCursorPawn*>(GetWorld()->GetFirstPlayerController()->GetPawn());
   if (mapPawn != NULL)
   {
-    mapPawn->CursorEvent.AddUObject(this, &ADungeonGameModeBase::setCurrentPosition);
-    mapPawn->QueryInput.AddUObject(this, &ADungeonGameModeBase::setCurrentPosition);
+    // mapPawn->CursorEvent.AddUObject(this, &ADungeonGameModeBase::setCurrentPosition);
+    // mapPawn->QueryInput.AddUObject(this, &ADungeonGameModeBase::setCurrentPosition);
+    auto state = MakeShared<FSelectingGameState>(*this);
+    currentState = state;
+    state->Enter();
 
     MainWidget = CreateWidget<UDungeonMainWidget>(this->GetWorld()->GetFirstPlayerController(), MainWidgetClass);
-    MainWidget->Move->OnClicked.AddUniqueDynamic(this, &ADungeonGameModeBase::HandleMove);
     MainWidget->Wait->OnClicked.AddUniqueDynamic(this, &ADungeonGameModeBase::HandleWait);
     MainWidget->AddToViewport();
 
@@ -205,49 +207,75 @@ void ADungeonGameModeBase::React()
   RefocusMenu();
 }
 
-void FSelectingGameState::OnCursorPositionUpdate()
+void FSelectingGameState::OnCursorPositionUpdate(FIntPoint pt)
 {
-  // AMapCursorPawn* mapPawn = static_cast<AMapCursorPawn*>(GetWorld()->GetFirstPlayerController()->GetPawn());
-  // APlayerController* controller = this->GetNetOwningPlayer()->GetPlayerController(this->GetWorld());
-  // const bool queryTriggered = mapPawn->ConsumeQueryCalled();
-  //
-  // FDungeonLogicMap& DungeonLogicMap = Game->map;
-  // TMap<FIntPoint, int>& unitAssignmentMap = DungeonLogicMap.unitAssignment;
-  // TSet<FIntPoint> moveLocations;
-  // auto foundId = unitAssignmentMap.Contains(CurrentPosition) ? unitAssignmentMap.FindChecked(CurrentPosition) : -1;
-  // auto foundUnit = DungeonLogicMap.loadedUnits.Find(foundId);
-  // bool unitCanTakeAction = foundUnit != nullptr ? foundUnit->state != ActionTaken : false;
-  // if (unitCanTakeAction)
-  // {
-  //   moveLocations = manhattanReachablePoints<TSet<FIntPoint>>(
-  //     DungeonLogicMap.Width, DungeonLogicMap.Height, foundUnit->movement * 2, CurrentPosition);
-  //   moveLocations.Remove(CurrentPosition);
-  // }
-  //
-  // this->lastMoveLocations = moveLocations;
-  // gameMode. tileVisualizationComponent->Clear();
-  // gameMode.tileVisualizationComponent->ShowTiles(moveLocations);
-  //
-  // if (foundUnit->state)
-  // {
-  //   auto attackWidget = StaticCastSharedRef<SButton>(gameMode.MainWidget->Attack->TakeWidget());
-  //   attackWidget->SetOnClicked(FOnClicked::CreateLambda([this](int id)
-  //   {
-  //     auto results = gameMode.AttackVisualization(id);
-  //     gameMode.AttackDelegate.Broadcast(results);
-  //     gameMode.Dispatch(FChangeState(EGameState::SelectingTarget));
-  //     return FReply::Handled();
-  //   }, foundUnit->id));
-  //   gameMode.Dispatch(FChangeState(EGameState::SelectingAbility));
-  // }
+  UWorld* InWorld = gameMode.GetWorld();
+  APlayerController* controller = InWorld->GetFirstPlayerController();
+  AMapCursorPawn* mapPawn = Cast<AMapCursorPawn>(controller->GetPawn());
+  auto& CurrentPosition = pt;
+
+  FDungeonLogicMap& DungeonLogicMap = gameMode.Game->map;
+  TMap<FIntPoint, int>& unitAssignmentMap = DungeonLogicMap.unitAssignment;
+  TSet<FIntPoint> moveLocations;
+  auto foundId = unitAssignmentMap.Contains(CurrentPosition) ? unitAssignmentMap.FindChecked(CurrentPosition) : -1;
+  foundUnit = DungeonLogicMap.loadedUnits.Find(foundId);
+  bool unitCanTakeAction = foundUnit != nullptr ? foundUnit->state != ActionTaken : false;
+  if (unitCanTakeAction)
+  {
+    moveLocations = manhattanReachablePoints<TSet<FIntPoint>>(
+      DungeonLogicMap.Width, DungeonLogicMap.Height, foundUnit->movement * 2, CurrentPosition);
+    moveLocations.Remove(CurrentPosition);
+  }
+
+  gameMode.tileVisualizationComponent->Clear();
+  gameMode.tileVisualizationComponent->ShowTiles(moveLocations);
+  this->targets.Add(ETargetsAvailableId::move, moveLocations);
 }
 
-void FSelectingGameState::Update()
+void FSelectingGameState::OnCursorQuery(FIntPoint)
 {
+  if (foundUnit != nullptr)
+  {
+    if (foundUnit->state == Free)
+    {
+      auto attackWidget = StaticCastSharedRef<SButton>(gameMode.MainWidget->Attack->TakeWidget());
+      attackWidget->SetOnClicked(FOnClicked::CreateLambda([this](int id)
+      {
+        auto results = gameMode.AttackVisualization(id);
+        gameMode.AttackDelegate.Broadcast(results);
+        gameMode.Dispatch(FChangeState(EGameState::SelectingTarget));
+        return FReply::Handled();
+      }, foundUnit->id));
+      gameMode.currentState = gameMode.MakeChangeState<FSelectingMenu>(this, gameMode, foundUnit,
+                                                                       MoveTemp(this->targets));
+    }
+  }
 }
 
-void ADungeonGameModeBase::ReactTargeting()
+void FSelectingGameState::Enter()
 {
+  AMapCursorPawn* MapCursorPawn = gameMode.GetMapCursorPawn();
+  //TODO: Hmm making the assumption that we're the set state? HMM
+  handles.Push(MapCursorPawn->QueryInput.AddRaw(this, &FSelectingGameState::OnCursorQuery));
+  handles.Push(MapCursorPawn->CursorEvent.AddRaw(this, &FSelectingGameState::OnCursorPositionUpdate));
+}
+
+void FSelectingGameState::Exit()
+{
+  AMapCursorPawn* MapCursorPawn = gameMode.GetMapCursorPawn();
+  MapCursorPawn->QueryInput.Remove(handles[0]);
+  MapCursorPawn->CursorEvent.Remove(handles[1]);
+}
+
+void FSelectingTargetGameState::OnCursorQuery(FIntPoint pt)
+{
+  FMoveAction moveAction(this->instigator.id, pt);
+  if (moveAction.canMove(&GameModeBase, this->TilesExtent))
+  {
+    GameModeBase.Dispatch(MoveTemp(moveAction));
+    GameModeBase.Reduce();
+    GameModeBase.currentState = GameModeBase.MakeChangeState<FSelectingGameState>(this, GameModeBase);
+  }
 }
 
 void ADungeonGameModeBase::HandleMove()
