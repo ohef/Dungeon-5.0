@@ -4,19 +4,33 @@
 
 #include "CoreMinimal.h"
 #include "DungeonSubmitHandlerWidget.h"
-#include "Actor/MapCursorPawn.h"
 #include "Components/TimelineComponent.h"
 
 #include "SingleSubmitHandler.generated.h"
 
 class SSingleSubmitHandlerWidget;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FIntervalHit);
+struct FIntervalPriority : public FFloatInterval
+{
+  int8 order;
+  float hitTime;
+
+  using FFloatInterval::FFloatInterval;
+
+  FIntervalPriority(float InMin, float InMax, int8 order)
+    : FFloatInterval(InMin, InMax), order(order)
+  {
+  }
+};
+
+typedef TArray<FIntervalPriority> FInteractionResults;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), Blueprintable)
 class DUNGEON_API USingleSubmitHandler : public UActorComponent
 {
   GENERATED_BODY()
+
+  DECLARE_EVENT_OneParam(USingleSubmitHandler, FInteractionFinished, const FInteractionResults&);
 
 public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="IntervalHandler")
@@ -25,14 +39,18 @@ public:
   float pivot = 3.0;
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="IntervalHandler")
   TArray<float> fallOffsFromPivot{0.3f, .5f, .75f};
-  
+
   TFunction<void()> stopCheckingQueries;
+
+  UPROPERTY(EditAnywhere)
+  FVector focusWorldLocation;
 
   UFUNCTION(BlueprintCallable)
   float GetCurrentTimeInTimeline();
+  void EndInteraction();
 
-  UPROPERTY(BlueprintAssignable)
-  FIntervalHit IntervalHit;
+  FInteractionFinished InteractionFinished;
+  FInteractionResults results;
 
   UPROPERTY()
   UDungeonSubmitHandlerWidget* HandlerWidget;
@@ -41,15 +59,16 @@ public:
   FTimeline timeline;
   FSlateBrush materialBrush;
 
-  virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-
   virtual void DoSubmit(FIntPoint);
 private:
-  TArray<FFloatInterval> handlers;
+  TArray<FIntervalPriority> handlers;
 
 public:
   // Sets default values for this component's properties
   USingleSubmitHandler(const FObjectInitializer&);
+
+  UFUNCTION()
+  void RemoveAfterAnimationFinished();
 
 protected:
   virtual void BeginPlay() override;

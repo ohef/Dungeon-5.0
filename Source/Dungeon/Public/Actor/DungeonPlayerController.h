@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dungeon/Dungeon.h"
 #include "GameFramework/PlayerController.h"
 #include "DungeonPlayerController.generated.h"
 
@@ -15,8 +16,12 @@ class DUNGEON_API ADungeonPlayerController : public APlayerController
   GENERATED_BODY()
 public:
   ADungeonPlayerController(const FObjectInitializer& ObjectInitializer);
+  
+  FQueryInput QueryInput;
 
   virtual void Tick(float DeltaSeconds) override;
+  void RaiseQuery();
+  void GoBackInteraction();
 
   virtual void SetupInputComponent() override;
 };

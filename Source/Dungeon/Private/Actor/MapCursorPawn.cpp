@@ -8,8 +8,10 @@
 #include <Core/Public/Containers/Array.h>
 
 #include "DungeonConstants.h"
+#include "LatentActions.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/DrawFrustumComponent.h"
+#include "GameFramework/SpringArmComponent.h"
 
 AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -24,20 +26,34 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
   CursorMesh->SetupAttachment(Offset);
   // CursorMesh->SetRelativeLocation({50, 50, 0});
 
+  SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("USpringArmComponent"));
+  SpringArmComponent->SetupAttachment(CursorCollider);
+  SpringArmComponent->SetWorldRotation(FRotator(-45, 0, 0));
   Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
-  Camera->SetupAttachment(CursorCollider);
+  Camera->SetupAttachment(SpringArmComponent);
   Camera->bAutoActivate = true;
-  Camera->ComponentTags = TArray<FName>();
-  Camera->ComponentTags.Reserve(1);
-  Camera->ComponentTags.Add(FName(TEXT("main")));
-  Camera->SetRelativeLocation({1250, 1250, 1250});
-  Camera->SetRelativeRotation(
-    UKismetMathLibrary::FindLookAtRotation(Camera->GetRelativeLocation(), FVector::ZeroVector));
 
   FrustumComponent = CreateDefaultSubobject<UDrawFrustumComponent>(TEXT("UDrawFrustumComponent"));
   MovementComponent = CreateDefaultSubobject<UFloatingPawnMovement>(TEXT("UFloatingPawnMovement"));
   MovementComponent->Acceleration = 16000;
   MovementComponent->Deceleration = 16000;
+
+  InterpToMovementComponent = CreateDefaultSubobject<UInterpToMovementComponent>(TEXT("UInterpToMovementComponent"));
+  InterpToMovementComponent->Duration = 1;
+  InterpToMovementComponent->BehaviourType = EInterpToBehaviourType::OneShot;
+
+  storedZoomLevels.Push(ZoomLevelNode{500});
+  storedZoomLevels.Push(ZoomLevelNode{1000});
+  storedZoomLevels.Push(ZoomLevelNode{1500});
+
+  for (int i = 0; i < storedZoomLevels.Num() - 1; i++)
+  {
+    storedZoomLevels[i].NextNode = storedZoomLevels.GetData() + i + 1;
+  }
+  storedZoomLevels[storedZoomLevels.Num() - 1].NextNode = storedZoomLevels.GetData();
+  
+  currentZoom = storedZoomLevels.GetData();
+  previousZoom = storedZoomLevels.GetData()->ZoomLevel;
 }
 
 void AMapCursorPawn::BeginPlay()
@@ -48,6 +64,9 @@ void AMapCursorPawn::BeginPlay()
 void AMapCursorPawn::Tick(float DeltaTime)
 {
   Super::Tick(DeltaTime);
+
+  SpringArmComponent->TargetArmLength = previousZoom =
+    FMath::FInterpTo(previousZoom, currentZoom->ZoomLevel, DeltaTime, 50.0);
 
   FVector currentLocation = this->GetActorLocation();
 
@@ -89,11 +108,19 @@ void AMapCursorPawn::RotateCamera(float Value)
 {
   if (Value != 0.0)
   {
-    Camera->SetRelativeLocation(
-      UKismetMathLibrary::RotateAngleAxis(Camera->GetRelativeTransform().GetLocation(), Value * 2, {0, 0, 1}));
-    Camera->SetRelativeRotation(
-      UKismetMathLibrary::FindLookAtRotation(Camera->GetRelativeLocation(), FVector::ZeroVector));
+    SpringArmComponent->AddRelativeRotation(FRotator(0, Value * 2, 0));
+    // SpringArmComponent->SetRelativeRotation(FRotator(0,Value * 2,0));
+    // Camera->SetRelativeLocation(
+    //   UKismetMathLibrary::RotateAngleAxis(Camera->GetRelativeTransform().GetLocation(), Value * 2, {0, 0, 1}));
+    // Camera->SetRelativeRotation(
+    //   UKismetMathLibrary::FindLookAtRotation(Camera->GetRelativeLocation(), FVector::ZeroVector));
   }
+}
+
+void AMapCursorPawn::CycleZoom()
+{
+  previousZoom = currentZoom->ZoomLevel;
+  currentZoom = currentZoom->NextNode;
 }
 
 void AMapCursorPawn::Query()
@@ -110,4 +137,5 @@ void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
   PlayerInputComponent->BindAxis(GMoveUp, this, &AMapCursorPawn::MoveUp);
   PlayerInputComponent->BindAxis(GCameraRotate, this, &AMapCursorPawn::RotateCamera);
   PlayerInputComponent->BindAction(GQuery, EInputEvent::IE_Pressed, this, &AMapCursorPawn::Query);
+  PlayerInputComponent->BindAction(GZoom, EInputEvent::IE_Pressed, this, &AMapCursorPawn::CycleZoom);
 }

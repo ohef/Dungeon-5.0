@@ -5,7 +5,7 @@
 template <typename FIntPointerHolder = TArray<FIntPoint>>
 FIntPointerHolder manhattanReachablePoints(int xLimit, int yLimit, int distance, const FIntPoint& point)
 {
-  int32 distanceHalved = distance / 2;
+  int32 distanceHalved = distance;
   auto xAxis = TRange<int>(point.X - distanceHalved, point.X + distanceHalved);
   auto yAxis = TRange<int>(point.Y - distanceHalved, point.Y + distanceHalved);
 

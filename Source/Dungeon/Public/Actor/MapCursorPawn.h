@@ -8,12 +8,20 @@
 #include <Math/IntPoint.h>
 
 #include "Components/CapsuleComponent.h"
+#include "Components/InterpToMovementComponent.h"
+#include "Dungeon/Dungeon.h"
 #include "GameFramework/FloatingPawnMovement.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "MapCursorPawn.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCursorEvent, FIntPoint);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCursorEventDynamic, FIntPoint, point);
-DECLARE_EVENT_OneParam(AMapCursorPawn, FQueryInput, FIntPoint);
+
+struct ZoomLevelNode
+{
+  int ZoomLevel;
+  ZoomLevelNode* NextNode;
+};
 
 UCLASS()
 class AMapCursorPawn : public APawn
@@ -31,10 +39,15 @@ protected:
   void RotateCamera(float Value);
   void Query();
 
+  TArray<ZoomLevelNode> storedZoomLevels;
+  float previousZoom;
+  ZoomLevelNode* currentZoom;
+
   UPROPERTY()
   bool QueryCalled = false;
   
 public:
+  void CycleZoom();
   bool ConsumeQueryCalled()
   {
     auto current = QueryCalled;
@@ -74,4 +87,10 @@ public:
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   UFloatingPawnMovement* MovementComponent ;
+  
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  UInterpToMovementComponent* InterpToMovementComponent ;
+  
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  USpringArmComponent* SpringArmComponent;
 };

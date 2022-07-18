@@ -1,16 +1,11 @@
 ﻿#include "SingleSubmitHandler.h"
 
 #include "DungeonSubmitHandlerWidget.h"
+#include "Actor/DungeonPlayerController.h"
 #include "Actor/MapCursorPawn.h"
 #include "Algo/Transform.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
-#include "Components/CanvasPanelSlot.h"
 #include "Kismet/KismetSystemLibrary.h"
-
-float USingleSubmitHandler::GetCurrentTimeInTimeline()
-{
-  return timeline.GetPlaybackPosition();
-}
 
 USingleSubmitHandler::USingleSubmitHandler(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -25,21 +20,36 @@ USingleSubmitHandler::USingleSubmitHandler(const FObjectInitializer& ObjectIniti
   PrimaryComponentTick.bStartWithTickEnabled = true;
 }
 
+float USingleSubmitHandler::GetCurrentTimeInTimeline()
+{
+  return timeline.GetPlaybackPosition();
+}
+
+void USingleSubmitHandler::EndInteraction(){
+  HandlerWidget->RemoveFromViewport();
+  DestroyComponent();
+}
+
+void USingleSubmitHandler::RemoveAfterAnimationFinished()
+{
+  InteractionFinished.Broadcast(results);
+  EndInteraction();
+}
+
 void USingleSubmitHandler::BeginPlay()
 {
   Super::BeginPlay();
 
   HandlerWidget = NewObject<UDungeonSubmitHandlerWidget>(this, HandlerWidgetClass);
-  APlayerController* InPlayerController = this->GetWorld()->GetFirstPlayerController();
-  FQueryInput QueryInput = Cast<AMapCursorPawn>(InPlayerController->GetPawn())->QueryInput;
+  auto InPlayerController = Cast<ADungeonPlayerController>(this->GetWorld()->GetFirstPlayerController());
+  FQueryInput& QueryInput = InPlayerController->QueryInput;
   FDelegateHandle handle = QueryInput.AddUObject(this, &USingleSubmitHandler::DoSubmit);
 
-  stopCheckingQueries = [handle, QueryInput]() mutable
+  stopCheckingQueries = [handle, &QueryInput]()
   {
     if (handle.IsValid())
     {
       QueryInput.Remove(handle);
-      handle.Reset();
     }
   };
 
@@ -47,19 +57,17 @@ void USingleSubmitHandler::BeginPlay()
   HandlerWidget->singleSubmitHandler = this;
   HandlerWidget->Initialize();
 
-  TArray<FFloatInterval> intervals;
-  Algo::Transform(fallOffsFromPivot, handlers, [this](float x)
+  TArray<FIntervalPriority> intervals;
+  int orderi = 1;
+  Algo::Transform(fallOffsFromPivot, handlers, [this, &orderi](float x)
   {
-    return FFloatInterval(pivot - x, pivot + x);
+    return FIntervalPriority(pivot - x, pivot + x, orderi++);
   });
-
-  FVector2D position;
-  FVector focusWorldLocation = this->GetOwner()->GetActorLocation();
-  UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
-    InPlayerController, focusWorldLocation,
-    position, true);
-  CastChecked<UCanvasPanelSlot>(HandlerWidget->OuterCircle->Slot)->SetSize(position);
   HandlerWidget->AddToViewport();
+
+  auto widget = FWidgetAnimationDynamicEvent();
+  widget.BindDynamic(this, &USingleSubmitHandler::RemoveAfterAnimationFinished);
+  HandlerWidget->BindToAnimationFinished(HandlerWidget->OuterDissappear, MoveTemp(widget));
 
   timeline.SetTimelineLengthMode(ETimelineLengthMode::TL_TimelineLength);
   timeline.SetTimelineLength(totalLength);
@@ -67,14 +75,9 @@ void USingleSubmitHandler::BeginPlay()
   timeline.Play();
 }
 
-void USingleSubmitHandler::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-  Super::PostEditChangeProperty(PropertyChangedEvent);
-}
-
 void USingleSubmitHandler::DoSubmit(FIntPoint)
 {
-  FFloatInterval* found = nullptr;
+  FIntervalPriority* found = nullptr;
   for (int i = 0; i < handlers.Num(); i++)
   {
     found = handlers[i].Contains(timeline.GetPlaybackPosition()) ? handlers.GetData() + i : nullptr;
@@ -82,8 +85,12 @@ void USingleSubmitHandler::DoSubmit(FIntPoint)
 
   if (found != nullptr)
   {
-    IntervalHit.Broadcast();
+    auto foundResult = *found;
+    foundResult.hitTime = timeline.GetPlaybackPosition();
+    results.Add(MoveTemp(foundResult));
     this->SetComponentTickEnabled(false);
+    timeline.Stop();
+    HandlerWidget->HandleHit();
     stopCheckingQueries();
   }
 }
@@ -93,4 +100,10 @@ void USingleSubmitHandler::TickComponent(float DeltaTime, ELevelTick TickType,
 {
   Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
   timeline.TickTimeline(DeltaTime);
+
+  APlayerController* InPlayerController = this->GetWorld()->GetFirstPlayerController();
+  FVector2D ScreenPosition;
+  UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(InPlayerController, focusWorldLocation, ScreenPosition,
+                                                             false);
+  HandlerWidget->SetRenderTranslation(FVector2D(ScreenPosition));
 }

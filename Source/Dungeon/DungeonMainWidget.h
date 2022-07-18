@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/Button.h"
+#include "Components/NativeWidgetHost.h"
 #include "Components/VerticalBox.h"
 #include "DungeonMainWidget.generated.h"
 
@@ -32,4 +33,6 @@ public:
   TWeakObjectPtr<UButton> Wait;
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
   TWeakObjectPtr<UButton> Move;
+  UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
+  TWeakObjectPtr<UNativeWidgetHost> UnitDisplay;
 };

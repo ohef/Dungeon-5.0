@@ -6,24 +6,30 @@
 UCLASS(meta = (BlueprintSpawnableComponent), Blueprintable)
 class DUNGEON_API UTileVisualizationComponent : public UInstancedStaticMeshComponent
 {
-	GENERATED_BODY()
+  GENERATED_BODY()
 
 public:
-	explicit UTileVisualizationComponent(const FObjectInitializer& ObjectInitializer)
-		: UInstancedStaticMeshComponent(ObjectInitializer)
-	{
-	}
+  explicit UTileVisualizationComponent(const FObjectInitializer& ObjectInitializer)
+    : UInstancedStaticMeshComponent(ObjectInitializer)
+  {
+    this->NumCustomDataFloats = 3;
+  }
 
-	void ShowTiles(const TSet<FIntPoint>& points)
-	{
-		for (auto point : points)
-		{
-			this->AddInstance(FTransform(FVector(point) * TILE_POINT_SCALE + FVector{0,0,1} ));
-		}
-	}
+  void ShowTiles(const TSet<FIntPoint>& points, const FLinearColor& color = FLinearColor::Black)
+  {
+    for (auto point : points)
+    {
+      int32 AddInstance = this->AddInstance(FTransform(FVector(point) * TILE_POINT_SCALE + FVector{0, 0, 1}));
 
-	void Clear()
-	{
-		this->ClearInstances();
-	}
+      if (color == FColor::Black)
+        continue;
+
+      this->SetCustomData( AddInstance, {color.R,color.G,color.B});
+    }
+  }
+
+  void Clear()
+  {
+    this->ClearInstances();
+  }
 };
