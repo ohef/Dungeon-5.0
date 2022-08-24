@@ -20,12 +20,20 @@ class DUNGEON_API UDungeonSubmitHandlerWidget : public UUserWidget
 public:
   UPROPERTY(meta=(BindWidget))
   UBorder* OuterCircle;
-  UPROPERTY(meta=(BindWidget))
+  UPROPERTY(meta=(BindWidget), BlueprintReadOnly)
   UBorder* InnerCircle;
   UPROPERTY(meta=(BindWidget))
   UCanvasPanel* Container;
   UPROPERTY(meta=(BindWidgetAnim), Transient)
   UWidgetAnimation* OuterDissappear;
+  
+  UPROPERTY(BlueprintReadWrite)
+  UMaterialInterface* CircleMaterial;
+  
+  UPROPERTY(Transient)
+  UMaterialInstanceDynamic* InnerCircleMaterial;
+
+  UDungeonSubmitHandlerWidget(const FObjectInitializer& Initializer);
   
   FVector2D InitialOuterCircleSize;
   TWeakObjectPtr<USingleSubmitHandler> singleSubmitHandler;

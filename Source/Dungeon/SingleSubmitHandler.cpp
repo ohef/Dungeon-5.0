@@ -1,11 +1,14 @@
 ﻿#include "SingleSubmitHandler.h"
 
 #include "DungeonSubmitHandlerWidget.h"
+#include "JsonObjectConverter.h"
 #include "Actor/DungeonPlayerController.h"
 #include "Actor/MapCursorPawn.h"
+#include "Algo/Accumulate.h"
 #include "Algo/Transform.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "UObject/ConstructorHelpers.h"
 
 USingleSubmitHandler::USingleSubmitHandler(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -25,7 +28,7 @@ float USingleSubmitHandler::GetCurrentTimeInTimeline()
   return timeline.GetPlaybackPosition();
 }
 
-void USingleSubmitHandler::EndInteraction(){
+void USingleSubmitHandler::EndInteraction() {
   HandlerWidget->RemoveFromViewport();
   DestroyComponent();
 }
@@ -39,6 +42,12 @@ void USingleSubmitHandler::RemoveAfterAnimationFinished()
 void USingleSubmitHandler::BeginPlay()
 {
   Super::BeginPlay();
+  
+  int orderi = 1;
+  Algo::Transform(fallOffsFromPivot, handlers, [this, &orderi](float x)
+  {
+    return FIntervalPriority(pivot - x, pivot + x, orderi++);
+  });
 
   HandlerWidget = NewObject<UDungeonSubmitHandlerWidget>(this, HandlerWidgetClass);
   auto InPlayerController = Cast<ADungeonPlayerController>(this->GetWorld()->GetFirstPlayerController());
@@ -56,13 +65,7 @@ void USingleSubmitHandler::BeginPlay()
   HandlerWidget->SetPlayerContext(FLocalPlayerContext(InPlayerController));
   HandlerWidget->singleSubmitHandler = this;
   HandlerWidget->Initialize();
-
-  TArray<FIntervalPriority> intervals;
-  int orderi = 1;
-  Algo::Transform(fallOffsFromPivot, handlers, [this, &orderi](float x)
-  {
-    return FIntervalPriority(pivot - x, pivot + x, orderi++);
-  });
+  
   HandlerWidget->AddToViewport();
 
   auto widget = FWidgetAnimationDynamicEvent();
@@ -77,6 +80,9 @@ void USingleSubmitHandler::BeginPlay()
 
 void USingleSubmitHandler::DoSubmit(FIntPoint)
 {
+  GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Red, FString::SanitizeFloat(timeline.GetPlaybackPosition()), true,
+                                   FVector2D::UnitVector * 3.0);
+  // FPlayWorldCommandCallbacks::PausePlaySession_Clicked();
   FIntervalPriority* found = nullptr;
   for (int i = 0; i < handlers.Num(); i++)
   {
@@ -100,6 +106,24 @@ void USingleSubmitHandler::TickComponent(float DeltaTime, ELevelTick TickType,
 {
   Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
   timeline.TickTimeline(DeltaTime);
+  
+  // FString output;
+  // FJsonObjectConverter::UStructToJsonObjectString(timeline,output);
+  // UE_LOG(LogTemp, Error, TEXT("%s"), ToCStr(output.) );
+
+  auto output = 
+  Algo::Accumulate(handlers, FString{}, [](FString acc, decltype(handlers)::ElementType val)
+  {
+    return acc.Append(FString::Format(TEXT( "Min {0}, Max {1}, Priority {2}\n" ), { val.Min, val.Max, val.order }));
+  });
+
+  GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, output, true,
+                                   FVector2D::UnitVector * 2.0);
+  GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, FString::SanitizeFloat(timeline.GetPlaybackPosition()), true,
+                                   FVector2D::UnitVector * 2.0);
+  
+  // UE_LOG(LogTemp, Error, TEXT("%s"), timeline.GetPlaybackPosition());
+  // UKismetSystemLibrary::PrintString(timeline.GetPlaybackPosition());
 
   APlayerController* InPlayerController = this->GetWorld()->GetFirstPlayerController();
   FVector2D ScreenPosition;

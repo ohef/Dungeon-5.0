@@ -60,9 +60,8 @@ public:
   FSlateBrush materialBrush;
 
   virtual void DoSubmit(FIntPoint);
-private:
   TArray<FIntervalPriority> handlers;
-
+  
 public:
   // Sets default values for this component's properties
   USingleSubmitHandler(const FObjectInitializer&);

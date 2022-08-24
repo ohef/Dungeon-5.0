@@ -19,17 +19,17 @@ struct FDungeonLogicUnit : public FTableRowBase
 {
   GENERATED_BODY()
 
-  FDungeonLogicUnit(): id(0), damage(0), hitPoints(0), state(), movement(0), teamId(0), attackRange(0)
+  FDungeonLogicUnit(): Id(0), damage(0), HitPoints(0), state(), Movement(0), teamId(0), attackRange(0)
   {
   }
 
   FDungeonLogicUnit(const FDungeonLogicUnit& Other)
-    : id(Other.id),
+    : Id(Other.Id),
       damage(Other.damage),
-      hitPoints(Other.hitPoints),
+      HitPoints(Other.HitPoints),
       state(Other.state),
-      name(Other.name),
-      movement(Other.movement),
+      Name(Other.Name),
+      Movement(Other.Movement),
       teamId(Other.teamId),
       attackRange(Other.attackRange)
   {
@@ -39,34 +39,34 @@ struct FDungeonLogicUnit : public FTableRowBase
   {
     if (this == &Other)
       return *this;
-    id = Other.id;
+    Id = Other.Id;
     damage = Other.damage;
-    hitPoints = Other.hitPoints;
+    HitPoints = Other.HitPoints;
     state = Other.state;
-    name = Other.name;
-    movement = Other.movement;
+    Name = Other.Name;
+    Movement = Other.Movement;
     teamId = Other.teamId;
     attackRange = Other.attackRange;
     return *this;
   }
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
-  int id;
+  int Id;
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   int damage;
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
-  int hitPoints;
+  int HitPoints;
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   TEnumAsByte<UnitState> state;
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
-  FString name;
+  FString Name;
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
-  int movement;
+  int Movement;
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   int teamId;

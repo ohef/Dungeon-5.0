@@ -22,31 +22,10 @@ public:
 
   UPROPERTY(VisibleAnywhere)
   TMap<int, TWeakObjectPtr<ADungeonUnitActor>> unitIdToActor;
-
-  UPROPERTY(VisibleAnywhere)
-  FIntPoint cursorLocation;
-
+  
   UDungeonLogicGame()
   {
     map.Width = 20;
     map.Height = 20;
-  }
-
-  void Init()
-  {
-    auto zaTile = MakeShared<FDungeonLogicTile>();
-    zaTile->id = 1;
-    zaTile->name = TEXT("Grass");
-    zaTile->cost = 1;
-
-    map.unitAssignment.Add({1, 10}, 1);
-
-    TArray<FIntPoint> points = pointsInSquareInclusive({0, 0}, map.Width, map.Height);
-    Algo::Transform(points, this->map.tileAssignment, [&zaTile](FIntPoint p)
-    {
-      return TTuple<FIntPoint, int>{p, zaTile->id};
-    });
-
-    map.loadedTiles.Add(convertToIdTuple(*zaTile));
   }
 };

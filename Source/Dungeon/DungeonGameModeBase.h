@@ -16,17 +16,11 @@
 #include "Curves/CurveVector.h"
 #include "Engine/DataTable.h"
 #include "GameFramework/GameState.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 #include "DungeonGameModeBase.generated.h"
 
-#define ReactStateVariable(SymbolType, SymbolName)\
-  SymbolType SymbolName;\
-  void set ## SymbolName( SymbolType val )\
-  {\
-    this->SymbolName = val;\
-    this->Reduce();\
-  }
-
+struct ProgramState;
 USTRUCT(BlueprintType)
 struct FAbilityParams : public FTableRowBase
 {
@@ -80,13 +74,6 @@ struct FTiledMap
 
   UPROPERTY()
   TArray<FTiledLayer> layers;
-};
-
-enum EGameState
-{
-  Selecting,
-  SelectingAbility,
-  SelectingTarget,
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAttackDelegate, FAttackResults const &, AttackResults);
@@ -193,10 +180,22 @@ struct FCoerceToFText
 };
 
 #define CREATE_GETTER_FOR_PROPERTY(managedPointer, fieldName) \
-FText get_##managedPointer##_##fieldName() const \
+FText Get##managedPointer####fieldName() const \
 { \
   return managedPointer == nullptr ? FText() : FCoerceToFText::Value(managedPointer->fieldName); \
 }
+
+struct FMoveAction : public FAction
+{
+  int id;
+  FIntPoint Destination;
+
+  FMoveAction(int ID, const FIntPoint& Destination)
+    : id(ID),
+      Destination(Destination)
+  {
+  }
+};
 
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase, public TSharedFromThis<ADungeonGameModeBase>
@@ -210,11 +209,11 @@ public:
   virtual void Tick(float time) override;
   void UpdateUnitActor(const FDungeonLogicUnit& unit);
 
-  CREATE_GETTER_FOR_PROPERTY(lastSeenUnitUnderCursor, id)
-  CREATE_GETTER_FOR_PROPERTY(lastSeenUnitUnderCursor, movement)
-  CREATE_GETTER_FOR_PROPERTY(lastSeenUnitUnderCursor, name)
-  CREATE_GETTER_FOR_PROPERTY(lastSeenUnitUnderCursor, hitPoints)
-
+  CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Id)
+  CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Movement)
+  CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Name)
+  CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, HitPoints)
+  void Hello(ProgramState helloDaddy);
   UPROPERTY(EditAnywhere)
   TSubclassOf<UUserWidget> MenuClass;
   UPROPERTY(EditAnywhere)
@@ -236,8 +235,7 @@ public:
   UPROPERTY(EditAnywhere)
   UStaticMesh* DaMesh;
 
-  FDungeonLogicUnit* lastSeenUnitUnderCursor;
-
+  FDungeonLogicUnit* LastSeenUnitUnderCursor;
   FTextBlockStyle style;
 
   UPROPERTY(BlueprintAssignable)
@@ -249,8 +247,6 @@ public:
   UDungeonMainWidget* MainWidget;
   UPROPERTY()
   UTileVisualizationComponent* tileVisualizationComponent;
-
-  FAttackDelegate AttackDelegate;
 
   TSharedPtr<FSelectingGameState> baseState;
   TArray<TSharedPtr<FState>> stateStack;
@@ -268,11 +264,6 @@ public:
       stateStack.Top()->Enter();
   }
 
-  TWeakPtr<FState> GetCurrentState()
-  {
-    return stateStack.IsEmpty() ? baseState : stateStack.Top();
-  }
-
   template <typename TState>
   void InputStateTransition(TState* state)
   {
@@ -283,6 +274,11 @@ public:
 
     stateStack.Push(MakeShareable<TState>(state));
     stateStack.Top()->Enter();
+  }
+
+  TWeakPtr<FState> GetCurrentState()
+  {
+    return stateStack.IsEmpty() ? baseState : stateStack.Top();
   }
 
   void CommitAndGotoBaseState()
@@ -296,9 +292,6 @@ public:
 
   TQueue<TUniquePtr<FTimeline>> AnimationQueue;
   TSet<FIntPoint> lastMoveLocations;
-
-  ReactStateVariable(EGameState, CurrentGameState)
-  ReactStateVariable(FIntPoint, CurrentPosition)
 
   TQueue<TTuple<TUniquePtr<FAction>, TFunction<void()>>> reactEventQueue;
 
@@ -419,21 +412,25 @@ struct FAttackState : public FState
   }
 };
 
-template <typename TTransitionState = FAttackState>
 struct FSelectingTargetGameState : public FState
 {
   ADungeonGameModeBase& gameMode;
   FDungeonLogicUnit& instigator;
   TSet<FIntPoint> tilesExtent;
   TFunction<void(FIntPoint)> handleQuery;
+  // TFunction<TFunction<void()>()> hook;
+  // TFunction<void()> exitHook;
 
   FSelectingTargetGameState(ADungeonGameModeBase& GameModeBase, FDungeonLogicUnit& Instigator,
                             const TSet<FIntPoint>& TilesExtent,
-                            TFunction<void(FIntPoint)>&& QueryHandlerFunction)
+                            TFunction<void(FIntPoint)>&& QueryHandlerFunction
+                            // , TFunction<TFunction<void()>()>&& hook
+  )
     : gameMode(GameModeBase),
       instigator(Instigator),
       tilesExtent(TilesExtent),
       handleQuery(QueryHandlerFunction)
+  // , hook(hook)
   {
   }
 
@@ -441,11 +438,13 @@ struct FSelectingTargetGameState : public FState
 
   virtual void Enter() override
   {
+    // exitHook = hook();
     DelegateHandle = gameMode.GetMapCursorPawn()->QueryInput.AddLambda(handleQuery);
   }
 
   virtual void Exit() override
   {
+    // exitHook();
     gameMode.GetMapCursorPawn()->QueryInput.Remove(DelegateHandle);
   }
 };
@@ -504,14 +503,42 @@ struct FSelectingMenu : public FState, TSharedFromThis<FSelectingMenu>
   FReply OnMoveSelected();
 };
 
-struct FMoveAction : public FAction
-{
-  int id;
-  FIntPoint Destination;
+using TState = TVariant<FEmptyVariantState, FAttackState, FSelectingMenu, FSelectingTargetGameState>;
 
-  FMoveAction(int ID, const FIntPoint& Destination)
-    : id(ID),
-      Destination(Destination)
-  {
-  }
+struct ProgramState
+{
+  TState state;
 };
+
+template <class... Ts>
+struct StateHandler : Ts...
+{
+  using Ts::operator()...;
+};
+
+template <class... Ts>
+StateHandler(Ts ...) -> StateHandler<Ts...>;
+
+inline void ADungeonGameModeBase::Hello(ProgramState helloDaddy)
+{
+  Visit(StateHandler{
+          [this](FAttackState) -> TFunction<void()>
+          {
+            this->GetMapCursorPawn()->DisableInput(this->GetWorld()->GetFirstPlayerController());
+            return [&]()
+            {
+              this->GetMapCursorPawn()->EnableInput(this->GetWorld()->GetFirstPlayerController());
+            };
+          },
+          [](FSelectingMenu) -> TFunction<void()>
+          {
+          },
+          [](FSelectingTargetGameState) -> TFunction<void()>
+          {
+          },
+          [](auto) -> TFunction<void()>
+          {
+          }
+          // [](auto wew){}
+        }, helloDaddy.state);
+}

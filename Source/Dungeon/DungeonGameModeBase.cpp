@@ -15,6 +15,7 @@
 #include "Engine/DataTable.h"
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "lager/util.hpp"
 
 ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectInitializer) :
   Super(ObjectInitializer)
@@ -26,7 +27,6 @@ ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectIniti
   UnitTable = ObjectInitializer.CreateDefaultSubobject<UDataTable>(this, "Default");
   UnitTable->RowStruct = FDungeonLogicUnit::StaticStruct();
   Game = ObjectInitializer.CreateDefaultSubobject<UDungeonLogicGame>(this, "ZaGameZo");
-  Game->Init();
 }
 
 void ADungeonGameModeBase::BeginPlay()
@@ -38,7 +38,7 @@ void ADungeonGameModeBase::BeginPlay()
   TMap<int, FDungeonLogicUnitRow> loadedUnitTypes;
   for (auto unit : unitsArray)
   {
-    loadedUnitTypes.Add(unit->unitData.id, *unit);
+    loadedUnitTypes.Add(unit->unitData.Id, *unit);
   }
 
   FString jsonStringTMX;
@@ -61,9 +61,9 @@ void ADungeonGameModeBase::BeginPlay()
           {
             auto zaRow = loadedUnitTypes[value];
             auto zaunit = zaRow.unitData;
-            zaunit.id = dataIndex;
-            zaunit.name = FString::FormatAsNumber(dataIndex);
-            Game->map.loadedUnits.Add(zaunit.id, zaunit);
+            zaunit.Id = dataIndex;
+            zaunit.Name = FString::FormatAsNumber(dataIndex);
+            Game->map.loadedUnits.Add(zaunit.Id, zaunit);
 
             FIntPoint positionPlacement{i, j};
             Game->map.unitAssignment.Add(positionPlacement, dataIndex);
@@ -71,7 +71,7 @@ void ADungeonGameModeBase::BeginPlay()
             UClass* UnrealActor = zaRow.UnrealActor.Get();
             auto unitActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnrealActor, FVector::ZeroVector,
                                                                        FRotator::ZeroRotator);
-            Game->unitIdToActor.Add(zaunit.id, unitActor);
+            Game->unitIdToActor.Add(zaunit.Id, unitActor);
             unitActor->SetActorLocation(TilePositionToWorldPoint(positionPlacement));
           }
         }
@@ -141,15 +141,13 @@ void ADungeonGameModeBase::BeginPlay()
 
     MainWidget->UnitDisplay->SetContent(
       SNew(SVerticalBox)
-      + styleSetter("Name", &ADungeonGameModeBase::get_lastSeenUnitUnderCursor_name)
-      + styleSetter("HitPoints", &ADungeonGameModeBase::get_lastSeenUnitUnderCursor_hitPoints)
-      + styleSetter("Movement", &ADungeonGameModeBase::get_lastSeenUnitUnderCursor_movement)
+      + styleSetter("Name", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorName)
+      + styleSetter("HitPoints", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorHitPoints)
+      + styleSetter("Movement", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorMovement)
     );
 
     baseState = MakeShared<FSelectingGameState>(*this);
     baseState->Enter();
-
-    this->setCurrentGameState(EGameState::Selecting);
   }
 }
 
@@ -181,7 +179,7 @@ void ADungeonGameModeBase::React()
 
 void ADungeonGameModeBase::ApplyAction(FCombatAction action)
 {
-  Game->map.loadedUnits.Add(action.updatedUnit.id, action.updatedUnit);
+  Game->map.loadedUnits.Add(action.updatedUnit.Id, action.updatedUnit);
   FDungeonLogicUnit* DungeonLogicUnit = Game->map.loadedUnits.Find(action.InitiatorId);
   DungeonLogicUnit->state = UnitState::ActionTaken;
   UpdateUnitActor(action.updatedUnit);
@@ -248,19 +246,14 @@ void ADungeonGameModeBase::Tick(float deltaTime)
 void ADungeonGameModeBase::UpdateUnitActor(const FDungeonLogicUnit& unit)
 {
   FDungeonLogicMap& DungeonLogicMap = Game->map;
-  TWeakObjectPtr<ADungeonUnitActor> DungeonUnitActor = Game->unitIdToActor.FindChecked(unit.id);
+  TWeakObjectPtr<ADungeonUnitActor> DungeonUnitActor = Game->unitIdToActor.FindChecked(unit.Id);
   DungeonUnitActor->React(unit);
   DungeonUnitActor->SetActorLocation(
-    FVector(*DungeonLogicMap.unitAssignment.FindKey(unit.id)) * TILE_POINT_SCALE);
+    FVector(*DungeonLogicMap.unitAssignment.FindKey(unit.Id)) * TILE_POINT_SCALE);
 }
 
-void FSelectingGameState::OnCursorPositionUpdate(FIntPoint pt)
+void FSelectingGameState::OnCursorPositionUpdate(FIntPoint CurrentPosition )
 {
-  UWorld* InWorld = gameMode.GetWorld();
-  APlayerController* controller = InWorld->GetFirstPlayerController();
-  AMapCursorPawn* mapPawn = Cast<AMapCursorPawn>(controller->GetPawn());
-  auto& CurrentPosition = pt;
-
   FDungeonLogicMap& DungeonLogicMap = gameMode.Game->map;
   TMap<FIntPoint, int>& unitAssignmentMap = DungeonLogicMap.unitAssignment;
   TSet<FIntPoint> points;
@@ -271,7 +264,7 @@ void FSelectingGameState::OnCursorPositionUpdate(FIntPoint pt)
   if (unitCanTakeAction)
   {
     points = DungeonLogicMap.constrainedManhattanReachablePoints<TSet<FIntPoint>>(
-      foundUnit->movement + foundUnit->attackRange, CurrentPosition);
+      foundUnit->Movement + foundUnit->attackRange, CurrentPosition);
     points.Remove(CurrentPosition);
   }
 
@@ -291,14 +284,14 @@ void FSelectingGameState::OnCursorPositionUpdate(FIntPoint pt)
 
   if (foundUnit)
   {
-    gameMode.lastSeenUnitUnderCursor = foundUnit;
+    gameMode.LastSeenUnitUnderCursor = foundUnit;
 
     FInt16Range attackRangeFilter = FInt16Range(
-      FInt16Range::BoundsType::Exclusive(foundUnit->movement),
-      FInt16Range::BoundsType::Inclusive(foundUnit->movement + foundUnit->attackRange));
+      FInt16Range::BoundsType::Exclusive(foundUnit->Movement),
+      FInt16Range::BoundsType::Inclusive(foundUnit->Movement + foundUnit->attackRange));
     TSet<FIntPoint> attackTiles;
     Algo::CopyIf(points, attackTiles, filterer(attackRangeFilter));
-    FInt16Range movementRangeFilter = FInt16Range::Inclusive(0, foundUnit->movement);
+    FInt16Range movementRangeFilter = FInt16Range::Inclusive(0, foundUnit->Movement);
     TSet<FIntPoint> movementTiles;
     Algo::CopyIf(points, movementTiles, filterer(movementRangeFilter));
 
@@ -338,9 +331,10 @@ void FSelectingGameState::Exit()
   unregisterDelegates();
 }
 
+
 FReply FSelectingMenu::OnAttackButtonClick()
 {
-  gameMode.InputStateTransition(new FSelectingTargetGameState<>(
+  gameMode.InputStateTransition(new FSelectingTargetGameState(
     gameMode, *initiatingUnit, targets.FindOrAdd(ETargetsAvailableId::attack),
     [
       &,
@@ -364,12 +358,12 @@ FReply FSelectingMenu::OnAttackButtonClick()
         [this, foundUnit, pt]
       (const FInteractionResults& results)
         {
-          int sourceID = initiatingUnit->id;
-          int targetID = foundUnit->id;
+          int sourceID = initiatingUnit->Id;
+          int targetID = foundUnit->Id;
           auto initiator = gameMode.Game->map.loadedUnits.FindChecked(sourceID);
           auto target = gameMode.Game->map.loadedUnits.FindChecked(targetID);
           auto damage = initiator.damage - floor((0.05 * results[0].order));
-          target.hitPoints -= damage;
+          target.HitPoints -= damage;
           auto combatAction = new FCombatAction(sourceID, target, damage, pt);
 
           gameMode.Dispatch(combatAction, [this, combatAction]()
@@ -388,34 +382,55 @@ FReply FSelectingMenu::OnAttackButtonClick()
   return FReply::Handled();
 }
 
+// using FVAction = TVariant<FMoveAction, FCombatAction>;
+
 FReply FSelectingMenu::OnMoveSelected()
 {
-  gameMode.InputStateTransition<>(
-    new FSelectingTargetGameState<FSelectingGameState>(
-      gameMode, *initiatingUnit, targets.FindOrAdd(ETargetsAvailableId::move),
-      [
-        &,
-        TilesExtent = targets.FindAndRemoveChecked(ETargetsAvailableId::move)
-      ](FIntPoint target)
-      {
-        if (gameMode.canUnitMoveToPointInRange(initiatingUnit->id, target, TilesExtent))
-        {
-          FMoveAction* moveAction = new FMoveAction(initiatingUnit->id, target);
-          gameMode.Dispatch(moveAction, [this, action = moveAction]()
-          {
-            FDungeonLogicMap& DungeonLogicMap = gameMode.Game->map;
-            DungeonLogicMap.unitAssignment.Remove(*DungeonLogicMap.unitAssignment.FindKey(action->id));
-            DungeonLogicMap.unitAssignment.Add(action->Destination, action->id);
-            FDungeonLogicUnit& foundUnit = DungeonLogicMap.loadedUnits.FindChecked(action->id);
-            foundUnit.state = UnitState::ActionTaken;
-            gameMode.UpdateUnitActor(foundUnit);
-            gameMode.CommitAndGotoBaseState();
-          });
+  // FVAction ey(TInPlaceType<FMoveAction>(), 2, FIntPoint {2,2});
+  // Visit(lager::visitor{
+  //         [](FMoveAction a) {
+  //         },
+  //         [](FCombatAction a) {
+  //         }
+  //       }, ey);
 
-          return true;
-        }
-        return false;
-      }));
+  auto handleQueryTop = [
+          this,
+          TilesExtent = targets.FindAndRemoveChecked(ETargetsAvailableId::move)
+        ](FIntPoint target)
+        {
+          if (gameMode.canUnitMoveToPointInRange(initiatingUnit->Id, target, TilesExtent))
+          {
+            FMoveAction* moveAction = new FMoveAction(initiatingUnit->Id, target);
+            gameMode.Dispatch(moveAction, [this, action = moveAction]()
+            {
+              FDungeonLogicMap& DungeonLogicMap = gameMode.Game->map;
+              DungeonLogicMap.unitAssignment.Remove(*DungeonLogicMap.unitAssignment.FindKey(action->id));
+              DungeonLogicMap.unitAssignment.Add(action->Destination, action->id);
+              FDungeonLogicUnit& foundUnit = DungeonLogicMap.loadedUnits.FindChecked(action->id);
+              foundUnit.state = UnitState::ActionTaken;
+              gameMode.UpdateUnitActor(foundUnit);
+              gameMode.CommitAndGotoBaseState();
+            });
+  
+            return true;
+          }
+          return false;
+        };
+
+  auto Lambda = [handleQuery = static_cast<TFunction<void(FIntPoint)>>(handleQueryTop), this] () 
+  {
+    FDelegateHandle handle = gameMode.GetMapCursorPawn()->QueryInput.AddLambda(handleQuery);
+    return [ handle, this]() {
+      gameMode.GetMapCursorPawn()->QueryInput.Remove(handle);
+    };
+  };
+  
+  gameMode.InputStateTransition<>(
+    new FSelectingTargetGameState( gameMode, *initiatingUnit, targets.FindOrAdd(ETargetsAvailableId::move),
+      MoveTemp(handleQueryTop) ));
 
   return FReply::Handled();
 }
+
+
