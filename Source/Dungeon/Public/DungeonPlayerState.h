@@ -13,5 +13,4 @@ UCLASS()
 class DUNGEON_API ADungeonPlayerState : public APlayerState
 {
 	GENERATED_BODY()
-
 };

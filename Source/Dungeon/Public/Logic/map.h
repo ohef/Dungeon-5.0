@@ -8,9 +8,6 @@
 
 #include "map.generated.h"
 
-typedef int TileID;
-typedef int UnitID;
-
 USTRUCT(BlueprintType)
 struct FDungeonLogicMap
 {

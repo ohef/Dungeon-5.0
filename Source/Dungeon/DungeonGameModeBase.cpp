@@ -2,7 +2,7 @@
 
 #include "DungeonGameModeBase.h"
 
-#include <Logic/game.h>
+#include <Logic/DungeonGameState.h>
 
 #include "DungeonMainWidget.h"
 #include "SingleSubmitHandler.h"
@@ -26,7 +26,7 @@ ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectIniti
   PrimaryActorTick.bCanEverTick = true;
   UnitTable = ObjectInitializer.CreateDefaultSubobject<UDataTable>(this, "Default");
   UnitTable->RowStruct = FDungeonLogicUnit::StaticStruct();
-  Game = ObjectInitializer.CreateDefaultSubobject<UDungeonLogicGame>(this, "ZaGameZo");
+  Game = ObjectInitializer.CreateDefaultSubobject<UDungeonLogicGameState>(this, "ZaGameZo");
 }
 
 void ADungeonGameModeBase::BeginPlay()
@@ -151,20 +151,6 @@ void ADungeonGameModeBase::BeginPlay()
   }
 }
 
-void ADungeonGameModeBase::Reduce()
-{
-  do
-  {
-    TTuple<TUniquePtr<FAction>, TFunction<void()>> tuple;
-    if (reactEventQueue.Dequeue(tuple))
-    {
-      tuple.Value();
-    }
-    // React();
-  }
-  while (!reactEventQueue.IsEmpty());
-}
-
 void ADungeonGameModeBase::React()
 {
   FDungeonLogicMap& DungeonLogicMap = Game->map;
@@ -180,15 +166,15 @@ void ADungeonGameModeBase::React()
 void ADungeonGameModeBase::ApplyAction(FCombatAction action)
 {
   Game->map.loadedUnits.Add(action.updatedUnit.Id, action.updatedUnit);
-  FDungeonLogicUnit* DungeonLogicUnit = Game->map.loadedUnits.Find(action.InitiatorId);
-  DungeonLogicUnit->state = UnitState::ActionTaken;
+  FDungeonLogicUnit DungeonLogicUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
+  DungeonLogicUnit.state = UnitState::ActionTaken;
   UpdateUnitActor(action.updatedUnit);
-  UpdateUnitActor(*DungeonLogicUnit);
+  UpdateUnitActor(DungeonLogicUnit);
 }
 
 void ADungeonGameModeBase::HandleWait()
 {
-  InputStateTransition(new FSelectingGameState(*this));
+  CommitAndGotoBaseState();
 }
 
 void ADungeonGameModeBase::RefocusMenu()
@@ -206,7 +192,7 @@ FAttackResults ADungeonGameModeBase::AttackVisualization(int attackingUnitId)
   FAttackResults results;
 
   results.AllAttackTiles = DungeonLogicMap.constrainedManhattanReachablePoints<TSet<FIntPoint>>(
-    attackingUnit.getAttackRange(), *attackingUnitPosition);
+    attackingUnit.attackRange, *attackingUnitPosition);
   for (FIntPoint Point : results.AllAttackTiles)
   {
     if (DungeonLogicMap.unitAssignment.Contains(Point))
@@ -252,7 +238,7 @@ void ADungeonGameModeBase::UpdateUnitActor(const FDungeonLogicUnit& unit)
     FVector(*DungeonLogicMap.unitAssignment.FindKey(unit.Id)) * TILE_POINT_SCALE);
 }
 
-void FSelectingGameState::OnCursorPositionUpdate(FIntPoint CurrentPosition )
+void FSelectingGameState::OnCursorPositionUpdate(FIntPoint CurrentPosition)
 {
   FDungeonLogicMap& DungeonLogicMap = gameMode.Game->map;
   TMap<FIntPoint, int>& unitAssignmentMap = DungeonLogicMap.unitAssignment;
@@ -260,7 +246,7 @@ void FSelectingGameState::OnCursorPositionUpdate(FIntPoint CurrentPosition )
   FAttackResults results;
   auto foundId = unitAssignmentMap.Contains(CurrentPosition) ? unitAssignmentMap.FindChecked(CurrentPosition) : -1;
   foundUnit = DungeonLogicMap.loadedUnits.Find(foundId);
-  bool unitCanTakeAction = foundUnit != nullptr ? foundUnit->state != ActionTaken : false;
+  bool unitCanTakeAction = foundUnit != nullptr && !gameMode.Game->turnState.unitsFinished.Contains(foundId);
   if (unitCanTakeAction)
   {
     points = DungeonLogicMap.constrainedManhattanReachablePoints<TSet<FIntPoint>>(
@@ -305,7 +291,7 @@ void FSelectingGameState::OnCursorPositionUpdate(FIntPoint CurrentPosition )
 
 void FSelectingGameState::OnCursorQuery(FIntPoint pt)
 {
-  if (foundUnit != nullptr && foundUnit->state == Free)
+  if (foundUnit != nullptr && !gameMode.Game->turnState.unitsFinished.Contains(foundUnit->Id))
   {
     gameMode.InputStateTransition(new FSelectingMenu(gameMode, pt, foundUnit, MoveTemp(this->targets)));
   }
@@ -316,6 +302,7 @@ void FSelectingGameState::Enter()
   AMapCursorPawn* MapCursorPawn = gameMode.GetMapCursorPawn();
   OnCursorPositionUpdate(MapCursorPawn->CurrentPosition);
   gameMode.MainWidget->MainMenu->SetVisibility(ESlateVisibility::Collapsed);
+
   //TODO: Hmm making the assumption that we're the set state? HMM
   auto queryDelegate = MapCursorPawn->QueryInput.AddRaw(this, &FSelectingGameState::OnCursorQuery);
   auto positionDelegate = MapCursorPawn->CursorEvent.AddRaw(this, &FSelectingGameState::OnCursorPositionUpdate);
@@ -331,106 +318,162 @@ void FSelectingGameState::Exit()
   unregisterDelegates();
 }
 
-
 FReply FSelectingMenu::OnAttackButtonClick()
 {
-  gameMode.InputStateTransition(new FSelectingTargetGameState(
-    gameMode, *initiatingUnit, targets.FindOrAdd(ETargetsAvailableId::attack),
-    [
-      &,
-      TilesExtent = targets.FindAndRemoveChecked(ETargetsAvailableId::attack)
-    ](FIntPoint pt)
+  TFunction<void(FIntPoint)> cursorQueryHandler =
+    [ &, TilesExtent = targets.FindAndRemoveChecked(ETargetsAvailableId::attack) ]
+  (FIntPoint pt)
+  {
+    TOptional<FDungeonLogicUnit> foundUnit = gameMode.FindUnit(pt);
+    if (!TilesExtent.Contains(pt) || !foundUnit.IsSet() || foundUnit->teamId == initiatingUnit->teamId)
     {
-      TOptional<FDungeonLogicUnit> foundUnit = gameMode.FindUnit(pt);
-      if (!TilesExtent.Contains(pt) || !foundUnit.IsSet() || foundUnit->teamId == initiatingUnit->teamId)
+      return false;
+    }
+
+    auto singleSubmitHandler =
+      CastChecked<USingleSubmitHandler>(
+        gameMode.AddComponentByClass(USingleSubmitHandler::StaticClass(), false, FTransform(), true));
+    singleSubmitHandler->focusWorldLocation = TilePositionToWorldPoint(pt);
+    singleSubmitHandler->totalLength = 3.;
+    singleSubmitHandler->pivot = 0.5;
+    singleSubmitHandler->fallOffsFromPivot = {0.1f, .2f, .3f};
+    singleSubmitHandler->InteractionFinished.AddLambda(
+      [this, foundUnit, pt]
+    (const FInteractionResults& results)
       {
-        return false;
-      }
+        int sourceID = initiatingUnit->Id;
+        int targetID = foundUnit->Id;
+        auto initiator = gameMode.Game->map.loadedUnits.FindChecked(sourceID);
+        auto target = gameMode.Game->map.loadedUnits.FindChecked(targetID);
+        auto damage = initiator.damage - floor((0.05 * results[0].order));
+        target.HitPoints -= damage;
 
-      auto singleSubmitHandler =
-        CastChecked<USingleSubmitHandler>(
-          gameMode.AddComponentByClass(USingleSubmitHandler::StaticClass(), false, FTransform(), true));
-      singleSubmitHandler->focusWorldLocation = TilePositionToWorldPoint(pt);
-      singleSubmitHandler->totalLength = 1.;
-      singleSubmitHandler->pivot = 0.5;
-      singleSubmitHandler->fallOffsFromPivot = {0.1f, .2f, .3f};
-      singleSubmitHandler->InteractionFinished.AddLambda(
-        [this, foundUnit, pt]
-      (const FInteractionResults& results)
-        {
-          int sourceID = initiatingUnit->Id;
-          int targetID = foundUnit->Id;
-          auto initiator = gameMode.Game->map.loadedUnits.FindChecked(sourceID);
-          auto target = gameMode.Game->map.loadedUnits.FindChecked(targetID);
-          auto damage = initiator.damage - floor((0.05 * results[0].order));
-          target.HitPoints -= damage;
-          auto combatAction = new FCombatAction(sourceID, target, damage, pt);
+        gameMode.Reduce(TAction(TInPlaceType<FCombatAction>{}, sourceID, target, damage, pt));
+      });
+    gameMode.FinishAddComponent(singleSubmitHandler, false, FTransform());
+    gameMode.InputStateTransition(new FAttackState(gameMode, singleSubmitHandler));
 
-          gameMode.Dispatch(combatAction, [this, combatAction]()
-                            {
-                              gameMode.CombatActionEvent.Broadcast(*combatAction);
-                              gameMode.CommitAndGotoBaseState();
-                            }
-          );
-        });
-      gameMode.FinishAddComponent(singleSubmitHandler, false, FTransform());
-      gameMode.InputStateTransition(new FAttackState(gameMode, singleSubmitHandler));
+    return true;
+  };
 
-      return true;
-    }));
+  gameMode.InputStateTransition(new FSelectingTargetGameState(gameMode, MoveTemp(cursorQueryHandler)));
 
   return FReply::Handled();
 }
 
-// using FVAction = TVariant<FMoveAction, FCombatAction>;
+void ADungeonGameModeBase::Reduce(TAction unionAction)
+{
+  Visit(lager::visitor{[&](auto action)
+  {
+    int g = 0;
+    using T = decltype(action);
+    if constexpr (
+      TOr<
+      TIsSame<T, FCombatAction>,
+      TIsSame<T, FMoveAction>
+      >::Value)
+    {
+      FDungeonLogicUnit foundUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
+      foundUnit.state = UnitState::ActionTaken;
+      Game->turnState.unitsFinished.Add(foundUnit.Id);
+
+      Visit(lager::visitor{
+              [&](FMoveAction action)
+              {
+                FDungeonLogicMap& DungeonLogicMap = Game->map;
+                DungeonLogicMap.unitAssignment.Remove(*DungeonLogicMap.unitAssignment.FindKey(action.InitiatorId));
+                DungeonLogicMap.unitAssignment.Add(action.Destination, action.InitiatorId);
+
+                // FDungeonLogicUnit foundUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
+                // foundUnit.state = UnitState::ActionTaken;
+                // Game->turnState.unitsFinished.Add(foundUnit.Id);
+
+                UpdateUnitActor(foundUnit);
+                CommitAndGotoBaseState();
+              },
+              [&](FCombatAction action)
+              {
+                CombatActionEvent.Broadcast(action);
+
+                // FDungeonLogicUnit DungeonLogicUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
+                // DungeonLogicUnit.state = UnitState::ActionTaken;
+                // Game->turnState.unitsFinished.Add(DungeonLogicUnit.Id);
+
+                UpdateUnitActor(action.updatedUnit);
+                UpdateUnitActor(foundUnit);
+                CommitAndGotoBaseState();
+              },
+              [&](FEmptyVariantState action)
+              {
+              }
+            }, unionAction);
+    }
+  }}, unionAction);
+
+  // Visit(lager::visitor{
+  //         [&](FMoveAction action)
+  //         {
+  //           FDungeonLogicMap& DungeonLogicMap = Game->map;
+  //           DungeonLogicMap.unitAssignment.Remove(*DungeonLogicMap.unitAssignment.FindKey(action.InitiatorId));
+  //           DungeonLogicMap.unitAssignment.Add(action.Destination, action.InitiatorId);
+  //           
+  //           FDungeonLogicUnit foundUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
+  //           foundUnit.state = UnitState::ActionTaken;
+  //           Game->turnState.unitsFinished.Add(foundUnit.Id);
+  //           
+  //           UpdateUnitActor(foundUnit);
+  //           CommitAndGotoBaseState();
+  //         },
+  //         [&](FCombatAction action)
+  //         {
+  //           CombatActionEvent.Broadcast(action);
+  //           
+  //           FDungeonLogicUnit DungeonLogicUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
+  //           DungeonLogicUnit.state = UnitState::ActionTaken;
+  //           Game->turnState.unitsFinished.Add(DungeonLogicUnit.Id);
+  //           
+  //           UpdateUnitActor(action.updatedUnit);
+  //           UpdateUnitActor(DungeonLogicUnit);
+  //           CommitAndGotoBaseState();
+  //         },
+  //         [&](FEmptyVariantState action)
+  //         {
+  //         }
+  //       }, unionAction);
+}
 
 FReply FSelectingMenu::OnMoveSelected()
 {
-  // FVAction ey(TInPlaceType<FMoveAction>(), 2, FIntPoint {2,2});
-  // Visit(lager::visitor{
-  //         [](FMoveAction a) {
-  //         },
-  //         [](FCombatAction a) {
-  //         }
-  //       }, ey);
-
   auto handleQueryTop = [
-          this,
-          TilesExtent = targets.FindAndRemoveChecked(ETargetsAvailableId::move)
-        ](FIntPoint target)
-        {
-          if (gameMode.canUnitMoveToPointInRange(initiatingUnit->Id, target, TilesExtent))
-          {
-            FMoveAction* moveAction = new FMoveAction(initiatingUnit->Id, target);
-            gameMode.Dispatch(moveAction, [this, action = moveAction]()
-            {
-              FDungeonLogicMap& DungeonLogicMap = gameMode.Game->map;
-              DungeonLogicMap.unitAssignment.Remove(*DungeonLogicMap.unitAssignment.FindKey(action->id));
-              DungeonLogicMap.unitAssignment.Add(action->Destination, action->id);
-              FDungeonLogicUnit& foundUnit = DungeonLogicMap.loadedUnits.FindChecked(action->id);
-              foundUnit.state = UnitState::ActionTaken;
-              gameMode.UpdateUnitActor(foundUnit);
-              gameMode.CommitAndGotoBaseState();
-            });
-  
-            return true;
-          }
-          return false;
-        };
-
-  auto Lambda = [handleQuery = static_cast<TFunction<void(FIntPoint)>>(handleQueryTop), this] () 
+      this,
+      TilesExtent = targets.FindAndRemoveChecked(ETargetsAvailableId::move)
+    ](FIntPoint target)
   {
-    FDelegateHandle handle = gameMode.GetMapCursorPawn()->QueryInput.AddLambda(handleQuery);
-    return [ handle, this]() {
-      gameMode.GetMapCursorPawn()->QueryInput.Remove(handle);
-    };
+    if (gameMode.canUnitMoveToPointInRange(initiatingUnit->Id, target, TilesExtent))
+    {
+      gameMode.Reduce(TAction(TInPlaceType<FMoveAction>{}, initiatingUnit->Id, target));
+    }
   };
-  
-  gameMode.InputStateTransition<>(
-    new FSelectingTargetGameState( gameMode, *initiatingUnit, targets.FindOrAdd(ETargetsAvailableId::move),
-      MoveTemp(handleQueryTop) ));
+
+  // auto Lambda = [handleQuery = static_cast<TFunction<void(FIntPoint)>>(handleQueryTop), this]()
+  // {
+  //   FDelegateHandle handle = gameMode.GetMapCursorPawn()->QueryInput.AddLambda(handleQuery);
+  //   return [ handle, this]()
+  //   {
+  //     gameMode.GetMapCursorPawn()->QueryInput.Remove(handle);
+  //   };
+  // };
+
+  // auto FStateWew = new FStateHook([this,innerHandle = handleQueryTop]()
+  // {
+  //   auto DelegateHandle = gameMode.GetMapCursorPawn()->QueryInput.AddLambda(innerHandle);
+  //   return[&]()
+  //   {
+  //     gameMode.GetMapCursorPawn()->QueryInput.Remove(DelegateHandle);
+  //   };
+  // });
+
+  gameMode.InputStateTransition<>(new FSelectingTargetGameState(gameMode, MoveTemp(handleQueryTop)));
 
   return FReply::Handled();
 }
-
-

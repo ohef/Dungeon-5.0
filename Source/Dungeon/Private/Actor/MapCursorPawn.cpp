@@ -125,7 +125,6 @@ void AMapCursorPawn::CycleZoom()
 
 void AMapCursorPawn::Query()
 {
-  QueryCalled = true;
   QueryInput.Broadcast(CurrentPosition);
 }
 

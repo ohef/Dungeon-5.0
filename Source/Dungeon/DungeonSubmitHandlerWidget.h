@@ -20,13 +20,10 @@ class DUNGEON_API UDungeonSubmitHandlerWidget : public UUserWidget
 public:
   UPROPERTY(meta=(BindWidget))
   UBorder* OuterCircle;
-  UPROPERTY(meta=(BindWidget), BlueprintReadOnly)
-  UBorder* InnerCircle;
   UPROPERTY(meta=(BindWidget))
   UCanvasPanel* Container;
   UPROPERTY(meta=(BindWidgetAnim), Transient)
   UWidgetAnimation* OuterDissappear;
-  
   UPROPERTY(BlueprintReadWrite)
   UMaterialInterface* CircleMaterial;
   

@@ -5,4 +5,3 @@
 #include "CoreMinimal.h"
 
 DECLARE_EVENT_OneParam(AMapCursorPawn, FQueryInput, FIntPoint);
-

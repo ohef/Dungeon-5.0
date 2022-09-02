@@ -23,33 +23,6 @@ struct FDungeonLogicUnit : public FTableRowBase
   {
   }
 
-  FDungeonLogicUnit(const FDungeonLogicUnit& Other)
-    : Id(Other.Id),
-      damage(Other.damage),
-      HitPoints(Other.HitPoints),
-      state(Other.state),
-      Name(Other.Name),
-      Movement(Other.Movement),
-      teamId(Other.teamId),
-      attackRange(Other.attackRange)
-  {
-  }
-
-  FDungeonLogicUnit& operator=(const FDungeonLogicUnit& Other)
-  {
-    if (this == &Other)
-      return *this;
-    Id = Other.Id;
-    damage = Other.damage;
-    HitPoints = Other.HitPoints;
-    state = Other.state;
-    Name = Other.Name;
-    Movement = Other.Movement;
-    teamId = Other.teamId;
-    attackRange = Other.attackRange;
-    return *this;
-  }
-
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   int Id;
 
@@ -73,7 +46,6 @@ struct FDungeonLogicUnit : public FTableRowBase
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   int attackRange;
-  int getAttackRange();
 };
 
 USTRUCT()
@@ -86,9 +58,3 @@ struct FDungeonLogicUnitRow : public FTableRowBase
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   TSubclassOf<ADungeonUnitActor> UnrealActor;
 };
-
-
-inline int FDungeonLogicUnit::getAttackRange()
-{
-  return attackRange;
-}

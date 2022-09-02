@@ -19,13 +19,16 @@ class ReducerVisitor<A, ActionType...> : ReducerVisitor<ActionType...>
 public:
   using ReducerVisitor<ActionType...>::Visit;
 
-  virtual void Visit(const A& action) const = 0;
+  virtual void Visit(const A& action) const {};
 };
 
-template <typename TVisitor>
+template <typename TVisitor, typename TAcceptorType>
 struct TPayloadAccept
 {
   virtual ~TPayloadAccept() = default;
 
-  virtual void Accept(const TVisitor& visitor) = 0;
+  void Accept(const TVisitor& visitor)
+  {
+    visitor.Visit(static_cast<TAcceptorType>(*this));
+  };
 };

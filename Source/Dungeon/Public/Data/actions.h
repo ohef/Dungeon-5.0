@@ -10,33 +10,26 @@ struct FAttackAction;
 
 typedef ReducerVisitor<FAttackAction, FWaitAction, FMovementAction, FCommitAction> ActionVisitor;
 
-#define AcceptFunction(VisitorName) virtual void Accept(const VisitorName& visitor) { visitor.Visit(*this); }
-
-struct FDungeonAbility : public TPayloadAccept<ActionVisitor>
+template<typename TDownCast>
+struct FDungeonAbility : public TPayloadAccept<ActionVisitor, TDownCast>
 {
   FName Name;
 };
 
-struct FMovementAction : public FDungeonAbility
+struct FMovementAction : public FDungeonAbility<FMovementAction>
 {
   FIntPoint to;
-  
-  AcceptFunction(ActionVisitor)
 };
 
-struct FAttackAction : public FDungeonAbility
+struct FAttackAction : public FDungeonAbility<FMovementAction>
 {
   int initialPower;
-  
-  AcceptFunction(ActionVisitor)
 };
 
-struct FWaitAction : public FDungeonAbility
+struct FWaitAction : public FDungeonAbility<FWaitAction>
 {
-  AcceptFunction(ActionVisitor)
 };
 
-struct FCommitAction : public FDungeonAbility
+struct FCommitAction : public FDungeonAbility<FCommitAction> 
 {
-  AcceptFunction(ActionVisitor)
 };

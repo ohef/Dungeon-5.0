@@ -6,16 +6,18 @@
 #include "GameFramework/GameModeBase.h"
 
 #include <Engine/Classes/Components/TimelineComponent.h>
-#include <Logic/game.h>
+#include <Logic/DungeonGameState.h>
 
 #include "DungeonMainWidget.h"
 #include "SingleSubmitHandler.h"
+#include "Actions/Action.h"
+#include "Actions/CombatAction.h"
+#include "Actions/MoveAction.h"
 #include "Actor/MapCursorPawn.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/TileVisualizationComponent.h"
 #include "Curves/CurveVector.h"
 #include "Engine/DataTable.h"
-#include "GameFramework/GameState.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 #include "DungeonGameModeBase.generated.h"
@@ -29,8 +31,6 @@ struct FAbilityParams : public FTableRowBase
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Dungeon)
   UMaterialInstance* coloring;
 };
-
-struct FAction;
 
 USTRUCT()
 struct FAttackResults
@@ -80,8 +80,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAttackDelegate, FAttackResults cons
 
 class ADungeonGameModeBase;
 
-//iUSTRUCT()<c-c>jjoGENERATED_BODY()<c-c>
-
 struct FState
 {
   virtual ~FState() = default;
@@ -92,6 +90,27 @@ struct FState
 
   virtual void Exit()
   {
+  };
+};
+
+struct FStateHook : FState
+{
+  TFunction<TFunction<void()>()> startingHook;
+  TFunction<void()> forExit;
+
+  explicit FStateHook(const TFunction<TFunction<void()>()>& StartingHook)
+    : startingHook(StartingHook)
+  {
+  }
+
+  virtual void Enter()
+  {
+    forExit = startingHook();
+  };
+
+  virtual void Exit()
+  {
+    forExit();
   };
 };
 
@@ -108,6 +127,7 @@ struct FSelectingGameState : public FState
   FDungeonLogicUnit* foundUnit;
   TMap<ETargetsAvailableId, TSet<FIntPoint>> targets;
   TFunction<void()> unregisterDelegates;
+  TSharedPtr<FStateHook> hook;
 
   explicit FSelectingGameState(ADungeonGameModeBase& GameMode)
     : gameMode(GameMode), foundUnit(nullptr)
@@ -123,46 +143,8 @@ struct FSelectingGameState : public FState
   virtual void Exit() override;
 };
 
-template <typename TToClass, typename TFromClass, typename... InArgs>
-static auto MakeChangeState(TFromClass* from, InArgs&&... Args) -> TSharedPtr<TToClass>
-{
-  return MakeShared<TToClass>(Forward<InArgs>(Args)...);
-}
-
-USTRUCT()
-struct FAction
-{
-  GENERATED_BODY()
-  virtual ~FAction() = default;
-};
-
-USTRUCT(BlueprintType)
-struct FCombatAction : public FAction
-{
-  GENERATED_BODY()
-
-  FCombatAction() = default;
-
-  FCombatAction(int InitiatorId, const FDungeonLogicUnit& UpdatedUnit, double DamageValue, const FIntPoint& Target)
-    : InitiatorId(InitiatorId),
-      updatedUnit(UpdatedUnit),
-      damageValue(DamageValue),
-      target(Target)
-  {
-  }
-
-  UPROPERTY(BlueprintReadWrite)
-  int InitiatorId;
-  UPROPERTY(BlueprintReadWrite)
-  FDungeonLogicUnit updatedUnit;
-  UPROPERTY(BlueprintReadWrite)
-  double damageValue;
-  UPROPERTY(BlueprintReadWrite)
-  FIntPoint target;
-};
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCombatActionEvent, FCombatAction, action);
-
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FUnitUpdate, FDungeonLogicUnit, unit);
 
 struct FCoerceToFText
@@ -185,17 +167,7 @@ FText Get##managedPointer####fieldName() const \
   return managedPointer == nullptr ? FText() : FCoerceToFText::Value(managedPointer->fieldName); \
 }
 
-struct FMoveAction : public FAction
-{
-  int id;
-  FIntPoint Destination;
-
-  FMoveAction(int ID, const FIntPoint& Destination)
-    : id(ID),
-      Destination(Destination)
-  {
-  }
-};
+using TAction = TVariant<FEmptyVariantState, FMoveAction, FCombatAction>;
 
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase, public TSharedFromThis<ADungeonGameModeBase>
@@ -208,6 +180,7 @@ public:
   virtual void BeginPlay() override;
   virtual void Tick(float time) override;
   void UpdateUnitActor(const FDungeonLogicUnit& unit);
+  void Reduce(TVariant<FEmptyVariantState, FMoveAction, FCombatAction> unionAction);
 
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Id)
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Movement)
@@ -219,37 +192,27 @@ public:
   UPROPERTY(EditAnywhere)
   UClass* TileShowPrefab;
   UPROPERTY(EditAnywhere)
-  UDungeonLogicGame* Game;
+  UDungeonLogicGameState* Game;
   UPROPERTY(EditAnywhere)
   UClass* UnitActorPrefab;
-  UPROPERTY(EditAnywhere)
-  UStaticMesh* UnitMeshIndicator;
-  UPROPERTY(EditAnywhere)
-  float MovementAnimationSpeedInSeconds;
-  UPROPERTY(EditAnywhere)
-  UMaterialInstance* UnitCommitMaterial;
   UPROPERTY(EditAnywhere)
   UDataTable* UnitTable;
   UPROPERTY(EditAnywhere)
   TMap<TEnumAsByte<ETargetsAvailableId>, FAbilityParams> TargetsColoring;
-  UPROPERTY(EditAnywhere)
-  UStaticMesh* DaMesh;
-
-  FDungeonLogicUnit* LastSeenUnitUnderCursor;
-  FTextBlockStyle style;
-
   UPROPERTY(BlueprintAssignable)
   FCombatActionEvent CombatActionEvent;
-  UPROPERTY(BlueprintAssignable)
-  FUnitUpdate UnitUpdateEvent;
-
   UPROPERTY()
   UDungeonMainWidget* MainWidget;
   UPROPERTY()
   UTileVisualizationComponent* tileVisualizationComponent;
 
+  FDungeonLogicUnit* LastSeenUnitUnderCursor;
+  FTextBlockStyle style;
   TSharedPtr<FSelectingGameState> baseState;
   TArray<TSharedPtr<FState>> stateStack;
+  TSubclassOf<UDungeonMainWidget> MainWidgetClass;
+  TQueue<TUniquePtr<FTimeline>> AnimationQueue;
+  TQueue<TTuple<TUniquePtr<FAction>, TFunction<void()>>> reactEventQueue;
 
   void GoBackOnInputState()
   {
@@ -288,13 +251,6 @@ public:
     GetCurrentState().Pin()->Enter();
   }
 
-  TSubclassOf<UDungeonMainWidget> MainWidgetClass;
-
-  TQueue<TUniquePtr<FTimeline>> AnimationQueue;
-  TSet<FIntPoint> lastMoveLocations;
-
-  TQueue<TTuple<TUniquePtr<FAction>, TFunction<void()>>> reactEventQueue;
-
   void React();
 
   FAttackResults AttackVisualization(int attackingUnitId);
@@ -306,14 +262,6 @@ public:
   UFUNCTION()
   void HandleWait();
 
-  template <typename TAction>
-  void Dispatch(TAction* action, TFunction<void()>&& consumer)
-  {
-    reactEventQueue.Enqueue(TTuple<TUniquePtr<TAction>, TFunction<void()>>(TUniquePtr<TAction>(action), consumer));
-    Reduce();
-  }
-
-  void Reduce();
   void RefocusMenu();
 
   template <typename T>
@@ -359,9 +307,10 @@ public:
 
   AMapCursorPawn* GetMapCursorPawn()
   {
-    UWorld* InWorld = this->GetWorld();
-    APlayerController* controller = InWorld->GetFirstPlayerController();
-    return Cast<AMapCursorPawn>(controller->GetPawn());
+    return this
+    ->GetWorld()
+    ->GetFirstPlayerController()
+    ->GetPawn<AMapCursorPawn>();
   }
 
   bool canUnitMoveToPointInRange(int unitId, FIntPoint destination, const TSet<FIntPoint>& movementExtent)
@@ -370,19 +319,10 @@ public:
     if (map.unitAssignment.Contains(destination))
       return false;
 
-    auto possibleLocation = map.unitAssignment.FindKey(unitId);
-    if (possibleLocation == nullptr) return false;
+    if (map.unitAssignment.FindKey(unitId) == nullptr)
+      return false;
 
-    if (movementExtent.Contains(destination))
-    {
-      auto unit = Game->unitIdToActor.Find(unitId);
-      if (unit == nullptr)
-        return false;
-
-      return true;
-    }
-
-    return false;
+    return movementExtent.Contains(destination) && Game->unitIdToActor.Contains(unitId);
   }
 };
 
@@ -399,12 +339,14 @@ struct FAttackState : public FState
 
   virtual void Enter() override
   {
-    gameMode.GetMapCursorPawn()->DisableInput(gameMode.GetWorld()->GetFirstPlayerController());
+    // gameMode.GetMapCursorPawn()->DisableInput(gameMode.GetWorld()->GetFirstPlayerController());
+    Invoke(&AMapCursorPawn::DisableInput, *gameMode.GetMapCursorPawn(), gameMode.GetWorld()->GetFirstPlayerController());
   }
 
   virtual void Exit() override
   {
-    gameMode.GetMapCursorPawn()->EnableInput(gameMode.GetWorld()->GetFirstPlayerController());
+    Invoke(&AMapCursorPawn::EnableInput, *gameMode.GetMapCursorPawn(), gameMode.GetWorld()->GetFirstPlayerController());
+    // gameMode.GetMapCursorPawn()->EnableInput(gameMode.GetWorld()->GetFirstPlayerController());
     if (SingleSubmitHandler.IsValid())
     {
       SingleSubmitHandler->EndInteraction();
@@ -415,36 +357,23 @@ struct FAttackState : public FState
 struct FSelectingTargetGameState : public FState
 {
   ADungeonGameModeBase& gameMode;
-  FDungeonLogicUnit& instigator;
-  TSet<FIntPoint> tilesExtent;
   TFunction<void(FIntPoint)> handleQuery;
-  // TFunction<TFunction<void()>()> hook;
-  // TFunction<void()> exitHook;
+  FDelegateHandle DelegateHandle;
 
-  FSelectingTargetGameState(ADungeonGameModeBase& GameModeBase, FDungeonLogicUnit& Instigator,
-                            const TSet<FIntPoint>& TilesExtent,
+  FSelectingTargetGameState(ADungeonGameModeBase& GameModeBase,
                             TFunction<void(FIntPoint)>&& QueryHandlerFunction
-                            // , TFunction<TFunction<void()>()>&& hook
-  )
-    : gameMode(GameModeBase),
-      instigator(Instigator),
-      tilesExtent(TilesExtent),
+  ) : gameMode(GameModeBase),
       handleQuery(QueryHandlerFunction)
-  // , hook(hook)
   {
   }
 
-  FDelegateHandle DelegateHandle;
-
   virtual void Enter() override
   {
-    // exitHook = hook();
     DelegateHandle = gameMode.GetMapCursorPawn()->QueryInput.AddLambda(handleQuery);
   }
 
   virtual void Exit() override
   {
-    // exitHook();
     gameMode.GetMapCursorPawn()->QueryInput.Remove(DelegateHandle);
   }
 };
@@ -539,6 +468,5 @@ inline void ADungeonGameModeBase::Hello(ProgramState helloDaddy)
           [](auto) -> TFunction<void()>
           {
           }
-          // [](auto wew){}
         }, helloDaddy.state);
 }

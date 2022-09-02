@@ -42,18 +42,9 @@ protected:
   TArray<ZoomLevelNode> storedZoomLevels;
   float previousZoom;
   ZoomLevelNode* currentZoom;
-
-  UPROPERTY()
-  bool QueryCalled = false;
   
 public:
   void CycleZoom();
-  bool ConsumeQueryCalled()
-  {
-    auto current = QueryCalled;
-    QueryCalled = false;;
-    return current;
-  };
 
   UFUNCTION(BlueprintCallable)
   virtual void Tick(float DeltaTime) override;

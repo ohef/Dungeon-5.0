@@ -21,21 +21,22 @@ UDungeonSubmitHandlerWidget::UDungeonSubmitHandlerWidget(const FObjectInitialize
 
 void UDungeonSubmitHandlerWidget::HandleHit()
 {
-  PlayAnimation(OuterDissappear, 0, 1, EUMGSequencePlayMode::Forward, 4);
+  PlayAnimation(OuterDissappear, 0, 1, EUMGSequencePlayMode::Forward, 1);
 }
 
 void UDungeonSubmitHandlerWidget::NativeOnInitialized()
 {
   Super::NativeOnInitialized();
+  FVector2D circleSize = FVector2D{500, 500};
 
   for (auto interval : singleSubmitHandler->handlers)
   {
     auto circleWidget = NewObject<UBorder>(
       this, UBorder::StaticClass());
-    auto PanelSlot = CastChecked<UCanvasPanelSlot>(Container->AddChild(circleWidget)) ;
-    PanelSlot->SetSize({500,500});
-    PanelSlot->SetPosition({0,0});
-    PanelSlot->SetAlignment({0.5,0.5});
+    auto PanelSlot = CastChecked<UCanvasPanelSlot>(Container->AddChild(circleWidget));
+    PanelSlot->SetSize(circleSize);
+    PanelSlot->SetPosition({0, 0});
+    PanelSlot->SetAlignment({0.5, 0.5});
     auto dynamicMaterial = UKismetMaterialLibrary::CreateDynamicMaterialInstance(this, CircleMaterial);
     dynamicMaterial->SetScalarParameterValue(FName(TEXT("InnerRadius")), interval.Min * .5);
     dynamicMaterial->SetScalarParameterValue(FName(TEXT("OuterRadius")), interval.Max * .5);
@@ -43,11 +44,7 @@ void UDungeonSubmitHandlerWidget::NativeOnInitialized()
     circleWidget->SetBrushColor(FLinearColor::White.CopyWithNewOpacity(.25));
   }
 
-  InitialOuterCircleSize = CastChecked<UCanvasPanelSlot>(InnerCircle->Slot)->GetSize();
-
-  // UCanvasPanelSlot* CanvasPanelSlot = CastChecked<UCanvasPanelSlot>(InnerCircle->Slot);
-  // CanvasPanelSlot->SetSize(
-  //   CanvasPanelSlot->GetSize() * (1.0 - singleSubmitHandler->pivot / singleSubmitHandler->totalLength));
+  InitialOuterCircleSize = circleSize;
 }
 
 void UDungeonSubmitHandlerWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
