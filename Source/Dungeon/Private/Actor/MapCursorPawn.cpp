@@ -51,7 +51,7 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
     storedZoomLevels[i].NextNode = storedZoomLevels.GetData() + i + 1;
   }
   storedZoomLevels[storedZoomLevels.Num() - 1].NextNode = storedZoomLevels.GetData();
-  
+
   currentZoom = storedZoomLevels.GetData();
   previousZoom = storedZoomLevels.GetData()->ZoomLevel;
 }
@@ -135,6 +135,7 @@ void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
   PlayerInputComponent->BindAxis(GMoveRight, this, &AMapCursorPawn::MoveRight);
   PlayerInputComponent->BindAxis(GMoveUp, this, &AMapCursorPawn::MoveUp);
   PlayerInputComponent->BindAxis(GCameraRotate, this, &AMapCursorPawn::RotateCamera);
+  // PlayerInputComponent->BindAction(GCameraRotate, EInputEvent::IE_Pressed, this, &AMapCursorPawn::RotateCamera);
   PlayerInputComponent->BindAction(GQuery, EInputEvent::IE_Pressed, this, &AMapCursorPawn::Query);
   PlayerInputComponent->BindAction(GZoom, EInputEvent::IE_Pressed, this, &AMapCursorPawn::CycleZoom);
 }

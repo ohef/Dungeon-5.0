@@ -16,6 +16,7 @@
 #include "GameFramework/GameStateBase.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "lager/util.hpp"
+#include "Serialization/Csv/CsvParser.h"
 
 ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectInitializer) :
   Super(ObjectInitializer)
@@ -41,42 +42,84 @@ void ADungeonGameModeBase::BeginPlay()
     loadedUnitTypes.Add(unit->unitData.Id, *unit);
   }
 
-  FString jsonStringTMX;
-  if (FFileHelper::LoadFileToString(jsonStringTMX,
-                                    ToCStr(FPaths::Combine(FPaths::ProjectDir(), TEXT("mapassignments.tmj")))))
+  FString StuffR;
+  FString TheStr = FPaths::Combine(FPaths::ProjectDir(), TEXT("theBoard.csv"));
+  if (FFileHelper::LoadFileToString(StuffR, ToCStr(TheStr)))
   {
-    TSharedPtr<FJsonObject> jsonTMX;
-    TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<>::Create(jsonStringTMX);
-    if (FJsonSerializer::Deserialize(JsonReader, jsonTMX))
+    const FCsvParser Parser(MoveTemp(StuffR));
+    const auto& Rows = Parser.GetRows();
+    int32 height = Rows.Num();
+    for (int i = 0; i < height; i++)
     {
-      FTiledMap TiledMap;
-      FJsonObjectConverter::JsonObjectToUStruct<FTiledMap>(jsonTMX.ToSharedRef(), &TiledMap);
-
-      for (int i = 0; i < TiledMap.layers[0].height; ++i)
-        for (int j = 0; j < TiledMap.layers[0].width; ++j)
+      int32 width = Rows[i].Num();
+      Game->map.Height = height;
+      Game->map.Width = width;
+      Game->turnState.TeamId = 1;
+      for (int j = 0; j < width; j++)
+      {
+        int dataIndex = i * width + j;
+        auto value = FCString::Atoi(Rows[i][j]);
+        if (loadedUnitTypes.Contains(value))
         {
-          int dataIndex = i * TiledMap.layers[0].height + j;
-          auto value = TiledMap.layers[0].data[dataIndex];
-          if (value > 0 && loadedUnitTypes.Contains(value))
-          {
-            auto zaRow = loadedUnitTypes[value];
-            auto zaunit = zaRow.unitData;
-            zaunit.Id = dataIndex;
-            zaunit.Name = FString::FormatAsNumber(dataIndex);
-            Game->map.loadedUnits.Add(zaunit.Id, zaunit);
+          auto zaRow = loadedUnitTypes[value];
+          auto zaunit = zaRow.unitData;
+          zaunit.Id = dataIndex;
+          zaunit.Name = FString::FormatAsNumber(dataIndex);
+          Game->map.loadedUnits.Add(zaunit.Id, zaunit);
 
-            FIntPoint positionPlacement{i, j};
-            Game->map.unitAssignment.Add(positionPlacement, dataIndex);
+          FIntPoint positionPlacement{i, j};
+          Game->map.unitAssignment.Add(positionPlacement, dataIndex);
 
-            UClass* UnrealActor = zaRow.UnrealActor.Get();
-            auto unitActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnrealActor, FVector::ZeroVector,
-                                                                       FRotator::ZeroRotator);
-            Game->unitIdToActor.Add(zaunit.Id, unitActor);
-            unitActor->SetActorLocation(TilePositionToWorldPoint(positionPlacement));
-          }
+          UClass* UnrealActor = zaRow.UnrealActor.Get();
+          auto unitActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnrealActor, FVector::ZeroVector,
+                                                                     FRotator::ZeroRotator);
+          Game->unitIdToActor.Add(zaunit.Id, unitActor);
+          unitActor->SetActorLocation(TilePositionToWorldPoint(positionPlacement));
         }
+      }
     }
   }
+
+  // FString jsonStringTMX;
+  // if (FFileHelper::LoadFileToString(jsonStringTMX,
+  //                                   ToCStr(FPaths::Combine(FPaths::ProjectDir(), TEXT("mapassignments.tmj")))))
+  // {
+  //   TSharedPtr<FJsonObject> jsonTMX;
+  //   TSharedRef<TJsonReader<TCHAR>> JsonReader = TJsonReaderFactory<>::Create(jsonStringTMX);
+  //   if (FJsonSerializer::Deserialize(JsonReader, jsonTMX))
+  //   {
+  //     FTiledMap TiledMap;
+  //     FJsonObjectConverter::JsonObjectToUStruct<FTiledMap>(jsonTMX.ToSharedRef(), &TiledMap);
+  //
+  //     Game->map.Height = TiledMap.layers[0].height;
+  //     Game->map.Width = TiledMap.layers[0].width;
+  //     Game->turnState.TeamId = 1;
+  //
+  //     for (int i = 0; i < TiledMap.layers[0].height; ++i)
+  //       for (int j = 0; j < TiledMap.layers[0].width; ++j)
+  //       {
+  //         int dataIndex = i * TiledMap.layers[0].height + j;
+  //         auto value = TiledMap.layers[0].data[dataIndex];
+  //         if (value > 0 && loadedUnitTypes.Contains(value))
+  //         {
+  //           auto zaRow = loadedUnitTypes[value];
+  //           auto zaunit = zaRow.unitData;
+  //           zaunit.Id = dataIndex;
+  //           zaunit.Name = FString::FormatAsNumber(dataIndex);
+  //           Game->map.loadedUnits.Add(zaunit.Id, zaunit);
+  //
+  //           FIntPoint positionPlacement{i, j};
+  //           Game->map.unitAssignment.Add(positionPlacement, dataIndex);
+  //
+  //           UClass* UnrealActor = zaRow.UnrealActor.Get();
+  //           auto unitActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnrealActor, FVector::ZeroVector,
+  //                                                                      FRotator::ZeroRotator);
+  //           Game->unitIdToActor.Add(zaunit.Id, unitActor);
+  //           unitActor->SetActorLocation(TilePositionToWorldPoint(positionPlacement));
+  //         }
+  //       }
+  //   }
+  // }
 
   FString Result;
   FString Str = FPaths::Combine(FPaths::ProjectDir(), TEXT("UnitIds.csv"));
@@ -111,7 +154,6 @@ void ADungeonGameModeBase::BeginPlay()
   if (mapPawn != NULL)
   {
     MainWidget = CreateWidget<UDungeonMainWidget>(this->GetWorld()->GetFirstPlayerController(), MainWidgetClass);
-    MainWidget->Wait->OnClicked.AddUniqueDynamic(this, &ADungeonGameModeBase::HandleWait);
     MainWidget->AddToViewport();
     auto InAttribute = FCoreStyle::GetDefaultFontStyle("Bold", 30);
     InAttribute.OutlineSettings.OutlineSize = 3.0;
@@ -144,6 +186,7 @@ void ADungeonGameModeBase::BeginPlay()
       + styleSetter("Name", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorName)
       + styleSetter("HitPoints", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorHitPoints)
       + styleSetter("Movement", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorMovement)
+      + styleSetter("Turn ID", &ADungeonGameModeBase::GetCurrentTurnId)
     );
 
     baseState = MakeShared<FSelectingGameState>(*this);
@@ -170,11 +213,6 @@ void ADungeonGameModeBase::ApplyAction(FCombatAction action)
   DungeonLogicUnit.state = UnitState::ActionTaken;
   UpdateUnitActor(action.updatedUnit);
   UpdateUnitActor(DungeonLogicUnit);
-}
-
-void ADungeonGameModeBase::HandleWait()
-{
-  CommitAndGotoBaseState();
 }
 
 void ADungeonGameModeBase::RefocusMenu()
@@ -291,7 +329,9 @@ void FSelectingGameState::OnCursorPositionUpdate(FIntPoint CurrentPosition)
 
 void FSelectingGameState::OnCursorQuery(FIntPoint pt)
 {
-  if (foundUnit != nullptr && !gameMode.Game->turnState.unitsFinished.Contains(foundUnit->Id))
+  if (foundUnit != nullptr
+    && !gameMode.Game->turnState.unitsFinished.Contains(foundUnit->Id)
+    && gameMode.Game->turnState.TeamId == foundUnit->teamId )
   {
     gameMode.InputStateTransition(new FSelectingMenu(gameMode, pt, foundUnit, MoveTemp(this->targets)));
   }
@@ -335,8 +375,8 @@ FReply FSelectingMenu::OnAttackButtonClick()
         gameMode.AddComponentByClass(USingleSubmitHandler::StaticClass(), false, FTransform(), true));
     singleSubmitHandler->focusWorldLocation = TilePositionToWorldPoint(pt);
     singleSubmitHandler->totalLength = 3.;
-    singleSubmitHandler->pivot = 0.5;
-    singleSubmitHandler->fallOffsFromPivot = {0.1f, .2f, .3f};
+    singleSubmitHandler->pivot = 1.5;
+    singleSubmitHandler->fallOffsFromPivot = {0.3f};
     singleSubmitHandler->InteractionFinished.AddLambda(
       [this, foundUnit, pt]
     (const FInteractionResults& results)
@@ -361,85 +401,10 @@ FReply FSelectingMenu::OnAttackButtonClick()
   return FReply::Handled();
 }
 
-void ADungeonGameModeBase::Reduce(TAction unionAction)
+FReply FSelectingMenu::OnWaitButtonClick()
 {
-  Visit(lager::visitor{[&](auto action)
-  {
-    int g = 0;
-    using T = decltype(action);
-    if constexpr (
-      TOr<
-      TIsSame<T, FCombatAction>,
-      TIsSame<T, FMoveAction>
-      >::Value)
-    {
-      FDungeonLogicUnit foundUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
-      foundUnit.state = UnitState::ActionTaken;
-      Game->turnState.unitsFinished.Add(foundUnit.Id);
-
-      Visit(lager::visitor{
-              [&](FMoveAction action)
-              {
-                FDungeonLogicMap& DungeonLogicMap = Game->map;
-                DungeonLogicMap.unitAssignment.Remove(*DungeonLogicMap.unitAssignment.FindKey(action.InitiatorId));
-                DungeonLogicMap.unitAssignment.Add(action.Destination, action.InitiatorId);
-
-                // FDungeonLogicUnit foundUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
-                // foundUnit.state = UnitState::ActionTaken;
-                // Game->turnState.unitsFinished.Add(foundUnit.Id);
-
-                UpdateUnitActor(foundUnit);
-                CommitAndGotoBaseState();
-              },
-              [&](FCombatAction action)
-              {
-                CombatActionEvent.Broadcast(action);
-
-                // FDungeonLogicUnit DungeonLogicUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
-                // DungeonLogicUnit.state = UnitState::ActionTaken;
-                // Game->turnState.unitsFinished.Add(DungeonLogicUnit.Id);
-
-                UpdateUnitActor(action.updatedUnit);
-                UpdateUnitActor(foundUnit);
-                CommitAndGotoBaseState();
-              },
-              [&](FEmptyVariantState action)
-              {
-              }
-            }, unionAction);
-    }
-  }}, unionAction);
-
-  // Visit(lager::visitor{
-  //         [&](FMoveAction action)
-  //         {
-  //           FDungeonLogicMap& DungeonLogicMap = Game->map;
-  //           DungeonLogicMap.unitAssignment.Remove(*DungeonLogicMap.unitAssignment.FindKey(action.InitiatorId));
-  //           DungeonLogicMap.unitAssignment.Add(action.Destination, action.InitiatorId);
-  //           
-  //           FDungeonLogicUnit foundUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
-  //           foundUnit.state = UnitState::ActionTaken;
-  //           Game->turnState.unitsFinished.Add(foundUnit.Id);
-  //           
-  //           UpdateUnitActor(foundUnit);
-  //           CommitAndGotoBaseState();
-  //         },
-  //         [&](FCombatAction action)
-  //         {
-  //           CombatActionEvent.Broadcast(action);
-  //           
-  //           FDungeonLogicUnit DungeonLogicUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
-  //           DungeonLogicUnit.state = UnitState::ActionTaken;
-  //           Game->turnState.unitsFinished.Add(DungeonLogicUnit.Id);
-  //           
-  //           UpdateUnitActor(action.updatedUnit);
-  //           UpdateUnitActor(DungeonLogicUnit);
-  //           CommitAndGotoBaseState();
-  //         },
-  //         [&](FEmptyVariantState action)
-  //         {
-  //         }
-  //       }, unionAction);
+  gameMode.Reduce(TAction(TInPlaceType<FWaitAction>{}, this->initiatingUnit->Id));
+  return FReply::Handled();
 }
 
 FReply FSelectingMenu::OnMoveSelected()
@@ -476,4 +441,89 @@ FReply FSelectingMenu::OnMoveSelected()
   gameMode.InputStateTransition<>(new FSelectingTargetGameState(gameMode, MoveTemp(handleQueryTop)));
 
   return FReply::Handled();
+}
+
+void ADungeonGameModeBase::Reduce(TAction unionAction)
+{
+  Visit(lager::visitor{
+          [&](auto action)
+          {
+            using T = decltype(action);
+            if constexpr (
+              TOr<
+                TIsSame<T, FCombatAction>,
+                TIsSame<T, FMoveAction>,
+                TIsSame<T, FWaitAction>
+              >::Value)
+            {
+              FDungeonLogicUnit foundUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
+              foundUnit.state = UnitState::ActionTaken;
+              Game->turnState.unitsFinished.Add(foundUnit.Id);
+
+              Visit(lager::visitor{
+                      [&](FMoveAction MoveAction)
+                      {
+                        FDungeonLogicMap& DungeonLogicMap = Game->map;
+                        DungeonLogicMap.unitAssignment.Remove(
+                          *DungeonLogicMap.unitAssignment.FindKey(MoveAction.InitiatorId));
+                        DungeonLogicMap.unitAssignment.Add(MoveAction.Destination, MoveAction.InitiatorId);
+
+                        UpdateUnitActor(foundUnit);
+                        CommitAndGotoBaseState();
+                      },
+                      [&](FCombatAction CombatAction)
+                      {
+                        CombatActionEvent.Broadcast(CombatAction);
+
+                        FDungeonLogicUnit& Unit = CombatAction.updatedUnit;
+                        Unit.state = Game->turnState.unitsFinished.Contains(Unit.Id)
+                        ? UnitState::ActionTaken
+                        : UnitState::Free;
+                        UpdateUnitActor(Unit);
+                        UpdateUnitActor(foundUnit);
+                        CommitAndGotoBaseState();
+                      },
+                      [&](FWaitAction action)
+                      {
+                        UpdateUnitActor(foundUnit);
+                        CommitAndGotoBaseState();
+                      },
+                      [&](FEmptyVariantState action)
+                      {
+                      }
+                    }, unionAction);
+            }
+          }
+        }, unionAction);
+
+  // Visit(lager::visitor{
+  //         [&](FMoveAction action)
+  //         {
+  //           FDungeonLogicMap& DungeonLogicMap = Game->map;
+  //           DungeonLogicMap.unitAssignment.Remove(*DungeonLogicMap.unitAssignment.FindKey(action.InitiatorId));
+  //           DungeonLogicMap.unitAssignment.Add(action.Destination, action.InitiatorId);
+  //           
+  //           FDungeonLogicUnit foundUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
+  //           foundUnit.state = UnitState::ActionTaken;
+  //           Game->turnState.unitsFinished.Add(foundUnit.Id);
+  //           
+  //           UpdateUnitActor(foundUnit);
+  //           CommitAndGotoBaseState();
+  //         },
+  //         [&](FCombatAction action)
+  //         {
+  //           CombatActionEvent.Broadcast(action);
+  //           
+  //           FDungeonLogicUnit DungeonLogicUnit = Game->map.loadedUnits.FindChecked(action.InitiatorId);
+  //           DungeonLogicUnit.state = UnitState::ActionTaken;
+  //           Game->turnState.unitsFinished.Add(DungeonLogicUnit.Id);
+  //           
+  //           UpdateUnitActor(action.updatedUnit);
+  //           UpdateUnitActor(DungeonLogicUnit);
+  //           CommitAndGotoBaseState();
+  //         },
+  //         [&](FEmptyVariantState action)
+  //         {
+  //         }
+  //       }, unionAction);
 }

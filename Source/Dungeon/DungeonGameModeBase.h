@@ -15,10 +15,14 @@
 #include "Actions/MoveAction.h"
 #include "Actor/MapCursorPawn.h"
 #include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/TextBlock.h"
 #include "Components/TileVisualizationComponent.h"
+#include "Components/VerticalBoxSlot.h"
 #include "Curves/CurveVector.h"
 #include "Engine/DataTable.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Widget/Menus/EasyMenu.h"
 
 #include "DungeonGameModeBase.generated.h"
 
@@ -145,6 +149,7 @@ struct FSelectingGameState : public FState
 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCombatActionEvent, FCombatAction, action);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FUnitUpdate, FDungeonLogicUnit, unit);
 
 struct FCoerceToFText
@@ -167,7 +172,7 @@ FText Get##managedPointer####fieldName() const \
   return managedPointer == nullptr ? FText() : FCoerceToFText::Value(managedPointer->fieldName); \
 }
 
-using TAction = TVariant<FEmptyVariantState, FMoveAction, FCombatAction>;
+using TAction = TVariant<FEmptyVariantState, FMoveAction, FCombatAction, FWaitAction>;
 
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase, public TSharedFromThis<ADungeonGameModeBase>
@@ -180,12 +185,18 @@ public:
   virtual void BeginPlay() override;
   virtual void Tick(float time) override;
   void UpdateUnitActor(const FDungeonLogicUnit& unit);
-  void Reduce(TVariant<FEmptyVariantState, FMoveAction, FCombatAction> unionAction);
+  void Reduce(TAction unionAction);
 
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Id)
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Movement)
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Name)
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, HitPoints)
+
+  auto GetCurrentTurnId() const
+  {
+    return FCoerceToFText::Value(Game->turnState.TeamId);
+  }
+
   void Hello(ProgramState helloDaddy);
   UPROPERTY(EditAnywhere)
   TSubclassOf<UUserWidget> MenuClass;
@@ -259,8 +270,6 @@ public:
 
   UFUNCTION()
   void ApplyAction(FCombatAction action);
-  UFUNCTION()
-  void HandleWait();
 
   void RefocusMenu();
 
@@ -308,9 +317,9 @@ public:
   AMapCursorPawn* GetMapCursorPawn()
   {
     return this
-    ->GetWorld()
-    ->GetFirstPlayerController()
-    ->GetPawn<AMapCursorPawn>();
+           ->GetWorld()
+           ->GetFirstPlayerController()
+           ->GetPawn<AMapCursorPawn>();
   }
 
   bool canUnitMoveToPointInRange(int unitId, FIntPoint destination, const TSet<FIntPoint>& movementExtent)
@@ -340,7 +349,8 @@ struct FAttackState : public FState
   virtual void Enter() override
   {
     // gameMode.GetMapCursorPawn()->DisableInput(gameMode.GetWorld()->GetFirstPlayerController());
-    Invoke(&AMapCursorPawn::DisableInput, *gameMode.GetMapCursorPawn(), gameMode.GetWorld()->GetFirstPlayerController());
+    Invoke(&AMapCursorPawn::DisableInput, *gameMode.GetMapCursorPawn(),
+           gameMode.GetWorld()->GetFirstPlayerController());
   }
 
   virtual void Exit() override
@@ -413,11 +423,33 @@ struct FSelectingMenu : public FState, TSharedFromThis<FSelectingMenu>
     gameMode.MainWidget->MainMenu->SetVisibility(ESlateVisibility::Visible);
     gameMode.RefocusMenu();
 
-    auto moveButton = StaticCastSharedRef<SButton>(gameMode.MainWidget->Move->TakeWidget());
-    moveButton->SetOnClicked(FOnClicked::CreateSP(this->AsShared(), &FSelectingMenu::OnMoveSelected));
+    // gameMode.MainWidget->MainMenu->AddChildToVerticalBox()
+    auto easyMenu = gameMode.MainWidget->WidgetTree->ConstructWidget<UEasyMenu>();
 
-    auto attackWidget = StaticCastSharedRef<SButton>(gameMode.MainWidget->Attack->TakeWidget());
-    attackWidget->SetOnClicked(FOnClicked::CreateSP(this->AsShared(), &FSelectingMenu::OnAttackButtonClick));
+    // UButton* Button = gameMode.MainWidget->WidgetTree->ConstructWidget<UButton>();
+    // UTextBlock* textWidget = gameMode.MainWidget->WidgetTree->ConstructWidget<UTextBlock>();
+    // textWidget->Text = FText::FromString( "so it actually works");
+    // Button->AddChild(textWidget);
+    // gameMode.MainWidget->MainMenu->AddChildToVerticalBox(Button);
+    gameMode.MainWidget->MainMenu->AddChildToVerticalBox(easyMenu);
+    UEasyMenuEntry* EasyMenuEntry = NewObject<UEasyMenuEntry>(easyMenu);
+    EasyMenuEntry->Label = "PrintsCheckThisShitOutDude";
+    EasyMenuEntry->handler = [&]() { UKismetSystemLibrary::PrintString(&gameMode, "dude check this shit out dude"); };
+    UVerticalBoxSlot* VerticalBoxSlot = easyMenu->AddEntry(MoveTemp(EasyMenuEntry));
+    VerticalBoxSlot->SetPadding({5.0,5.0});
+    // easyMenu->AddEntry("dude");
+    // easyMenu->AddEntry("holyshit");
+    // Button->SetStyle()
+
+    //TODO: eh could template this somehow
+    StaticCastSharedRef<SButton>(gameMode.MainWidget->Move->TakeWidget())
+      ->SetOnClicked(FOnClicked::CreateSP(this->AsShared(), &FSelectingMenu::OnMoveSelected));
+
+    StaticCastSharedRef<SButton>(gameMode.MainWidget->Attack->TakeWidget())
+      ->SetOnClicked(FOnClicked::CreateSP(this->AsShared(), &FSelectingMenu::OnAttackButtonClick));
+
+    StaticCastSharedRef<SButton>(gameMode.MainWidget->Wait->TakeWidget())
+      ->SetOnClicked(FOnClicked::CreateSP(this->AsShared(), &FSelectingMenu::OnWaitButtonClick));
   }
 
   virtual void Exit() override
@@ -428,6 +460,8 @@ struct FSelectingMenu : public FState, TSharedFromThis<FSelectingMenu>
   }
 
   FReply OnAttackButtonClick();
+
+  FReply OnWaitButtonClick();
 
   FReply OnMoveSelected();
 };

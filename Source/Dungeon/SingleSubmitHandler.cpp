@@ -23,11 +23,6 @@ USingleSubmitHandler::USingleSubmitHandler(const FObjectInitializer& ObjectIniti
   PrimaryComponentTick.bStartWithTickEnabled = true;
 }
 
-float USingleSubmitHandler::GetCurrentTimeInTimeline()
-{
-  return timeline.GetPlaybackPosition();
-}
-
 void USingleSubmitHandler::EndInteraction()
 {
   HandlerWidget->RemoveFromViewport();
@@ -80,22 +75,21 @@ void USingleSubmitHandler::BeginPlay()
 
 void USingleSubmitHandler::DoSubmit(FIntPoint)
 {
-  float normalizedTime = timeline.GetPlaybackPosition() / timeline.GetTimelineLength();
-  GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Red, FString::SanitizeFloat(normalizedTime), true,
+  GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Red, FString::SanitizeFloat(timeline.GetPlaybackPosition()), true,
                                    FVector2D::UnitVector * 3.0);
   FIntervalPriority* found = nullptr;
   for (int i = 0; i < handlers.Num(); i++)
   {
-    found = handlers[i].Contains(normalizedTime) ? handlers.GetData() + i : nullptr;
+    found = handlers[i].Contains(timeline.GetPlaybackPosition()) ? handlers.GetData() + i : nullptr;
   }
 
   if (found != nullptr)
   {
     auto foundResult = *found;
-    foundResult.hitTime = timeline.GetPlaybackPosition();
-    results.Add(MoveTemp(foundResult));
     this->SetComponentTickEnabled(false);
     timeline.Stop();
+    foundResult.hitTime = timeline.GetPlaybackPosition();
+    results.Add(MoveTemp(foundResult));
     HandlerWidget->HandleHit();
     stopCheckingQueries();
   }

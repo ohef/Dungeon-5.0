@@ -11,8 +11,9 @@
 
 struct TurnState
 {
-  UPlayer* currentPlayer;
+  int TeamId;
   TSet<int> unitsFinished;
+  TSet<int> freeUnits;
 };
 
 UCLASS()
@@ -28,10 +29,4 @@ public:
 
   UPROPERTY(VisibleAnywhere)
   TMap<int, TWeakObjectPtr<ADungeonUnitActor>> unitIdToActor;
-  
-  UDungeonLogicGameState()
-  {
-    map.Width = 20;
-    map.Height = 20;
-  }
 };

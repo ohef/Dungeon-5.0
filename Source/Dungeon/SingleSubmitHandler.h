@@ -45,8 +45,6 @@ public:
   UPROPERTY(EditAnywhere)
   FVector focusWorldLocation;
 
-  UFUNCTION(BlueprintCallable)
-  float GetCurrentTimeInTimeline();
   void EndInteraction();
 
   FInteractionFinished InteractionFinished;
