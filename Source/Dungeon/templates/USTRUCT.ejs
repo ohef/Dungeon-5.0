@@ -1,0 +1,10 @@
+#pragma once
+
+#include "<%- ClassName %>.generated.h"
+
+USTRUCT(BlueprintType)
+struct F<%- ClassName %> : public <%- locals.ParentClassName || "UObject" %>
+{
+  GENERATED_BODY()
+};
+
