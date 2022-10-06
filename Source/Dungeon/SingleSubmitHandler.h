@@ -23,7 +23,7 @@ struct FIntervalPriority : public FFloatInterval
   }
 };
 
-typedef TArray<FIntervalPriority> FInteractionResults;
+using FInteractionResults = TArray<FIntervalPriority>;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), Blueprintable)
 class DUNGEON_API USingleSubmitHandler : public UActorComponent

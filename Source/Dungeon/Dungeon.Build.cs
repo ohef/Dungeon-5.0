@@ -14,6 +14,15 @@ public class Dungeon : ModuleRules
 		OptimizeCode = CodeOptimization.Never;
 
 		PrivateIncludePaths.AddRange(new string[] {"Dungeon/ThirdParty"});
-		Definitions.AddRange(new string[] {"IMMER_NO_FREE_LIST", "IMMER_NO_THREAD_SAFETY", "IMMER_NO_THREAD_SAFETY"});
+		Definitions.AddRange(new string[]
+		{
+			"LAGER_DISABLE_STORE_DEPENDENCY_CHECKS",
+			"ZUG_ENABLE_BOOST",
+			"ZUG_REDUCE_TAIL_RECURSIVE",
+			"ZUG_VARIANT_STD", 
+			"IMMER_NO_FREE_LIST", 
+			"IMMER_NO_THREAD_SAFETY", 
+			"IMMER_NO_THREAD_SAFETY"
+		});
 	}
 }

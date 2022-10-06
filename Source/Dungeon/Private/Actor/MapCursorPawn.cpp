@@ -109,11 +109,6 @@ void AMapCursorPawn::RotateCamera(float Value)
   if (Value != 0.0)
   {
     SpringArmComponent->AddRelativeRotation(FRotator(0, Value * 2, 0));
-    // SpringArmComponent->SetRelativeRotation(FRotator(0,Value * 2,0));
-    // Camera->SetRelativeLocation(
-    //   UKismetMathLibrary::RotateAngleAxis(Camera->GetRelativeTransform().GetLocation(), Value * 2, {0, 0, 1}));
-    // Camera->SetRelativeRotation(
-    //   UKismetMathLibrary::FindLookAtRotation(Camera->GetRelativeLocation(), FVector::ZeroVector));
   }
 }
 
@@ -135,7 +130,6 @@ void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
   PlayerInputComponent->BindAxis(GMoveRight, this, &AMapCursorPawn::MoveRight);
   PlayerInputComponent->BindAxis(GMoveUp, this, &AMapCursorPawn::MoveUp);
   PlayerInputComponent->BindAxis(GCameraRotate, this, &AMapCursorPawn::RotateCamera);
-  // PlayerInputComponent->BindAction(GCameraRotate, EInputEvent::IE_Pressed, this, &AMapCursorPawn::RotateCamera);
   PlayerInputComponent->BindAction(GQuery, EInputEvent::IE_Pressed, this, &AMapCursorPawn::Query);
   PlayerInputComponent->BindAction(GZoom, EInputEvent::IE_Pressed, this, &AMapCursorPawn::CycleZoom);
 }

@@ -1,7 +1,6 @@
 ﻿#include "SingleSubmitHandler.h"
 
 #include "DungeonSubmitHandlerWidget.h"
-#include "JsonObjectConverter.h"
 #include "Actor/DungeonPlayerController.h"
 #include "Actor/MapCursorPawn.h"
 #include "Algo/Accumulate.h"
@@ -15,7 +14,7 @@ USingleSubmitHandler::USingleSubmitHandler(const FObjectInitializer& ObjectIniti
   static ConstructorHelpers::FObjectFinder<UMaterial> NewMaterial(
     TEXT("Material'/Game/Blueprints/NewMaterial.NewMaterial'"));
   static ConstructorHelpers::FClassFinder<UDungeonSubmitHandlerWidget> HandlerClass(
-    TEXT("/Game/Blueprints/SubmitHandlerBlueprint"));
+    TEXT("/Game/Blueprints/Widgets/SubmitHandlerBlueprint"));
 
   materialBrush.SetResourceObject(NewMaterial.Object);
   HandlerWidgetClass = HandlerClass.Class;
@@ -111,10 +110,10 @@ void USingleSubmitHandler::TickComponent(float DeltaTime, ELevelTick TickType,
       return acc.Append(FString::Format(TEXT("Min {0}, Max {1}, Priority {2}\n"), {val.Min, val.Max, val.order}));
     });
 
-  GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, output, true,
-                                   FVector2D::UnitVector * 2.0);
-  GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, FString::SanitizeFloat(timeline.GetPlaybackPosition()), true,
-                                   FVector2D::UnitVector * 2.0);
+  // GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, output, true,
+  //                                  FVector2D::UnitVector * 2.0);
+  // GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, FString::SanitizeFloat(timeline.GetPlaybackPosition()), true,
+  //                                  FVector2D::UnitVector * 2.0);
 
   // UE_LOG(LogTemp, Error, TEXT("%s"), timeline.GetPlaybackPosition());
   // UKismetSystemLibrary::PrintString(timeline.GetPlaybackPosition());

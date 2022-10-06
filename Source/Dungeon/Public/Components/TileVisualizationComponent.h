@@ -1,3 +1,5 @@
+#pragma once
+
 #include "CoreMinimal.h"
 #include "DungeonConstants.h"
 
@@ -15,7 +17,8 @@ public:
     this->NumCustomDataFloats = 3;
   }
 
-  void ShowTiles(const TSet<FIntPoint>& points, const FLinearColor& color = FLinearColor::Black)
+  template<typename TContainer = TSet<FIntPoint>>
+  void ShowTiles(const TContainer& points, const FLinearColor& color = FLinearColor::Black)
   {
     for (auto point : points)
     {

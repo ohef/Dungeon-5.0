@@ -13,12 +13,6 @@ struct FDungeonLogicMap
 {
   GENERATED_BODY()
 
-  template <typename FIntPointerHolder = TArray<FIntPoint>>
-  FIntPointerHolder constrainedManhattanReachablePoints(int distance, const FIntPoint& point)
-  {
-    return manhattanReachablePoints<FIntPointerHolder>(Width, Height, distance, point);
-  };
-
   UPROPERTY(Category=Dungeon, VisibleAnywhere)
   int Width;
   UPROPERTY(Category=Dungeon, VisibleAnywhere)

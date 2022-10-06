@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Dungeon/DungeonGameModeBase.h"
 #include "GameFramework/GameStateBase.h"
 #include "DungeonState.generated.h"
 

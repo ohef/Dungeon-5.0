@@ -1,7 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include <Dungeon/Public/Logic/unit.h>
 #include <Dungeon/Public/Logic/map.h>
 #include <JsonUtilities/Public/JsonUtilities.h>
 #include <Runtime/Core/Public/Algo/Transform.h>
@@ -11,22 +10,21 @@
 
 struct TurnState
 {
-  int TeamId;
+  int teamId;
   TSet<int> unitsFinished;
-  TSet<int> freeUnits;
 };
 
-UCLASS()
-class UDungeonLogicGameState : public UObject
+
+USTRUCT()
+struct FDungeonLogicGameState
 {
   GENERATED_BODY()
 
-public:
+  TurnState turnState;
+  
   UPROPERTY(VisibleAnywhere)
   FDungeonLogicMap map;
-
-  TurnState turnState;
-
+  
   UPROPERTY(VisibleAnywhere)
   TMap<int, TWeakObjectPtr<ADungeonUnitActor>> unitIdToActor;
 };

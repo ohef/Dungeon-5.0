@@ -7,6 +7,7 @@
 #include "Components/Button.h"
 #include "Components/NativeWidgetHost.h"
 #include "Components/VerticalBox.h"
+#include "Widget/Menus/MainMapMenu.h"
 #include "DungeonMainWidget.generated.h"
 
 /**
@@ -15,6 +16,10 @@
 UCLASS(Abstract)
 class DUNGEON_API UDungeonMainWidget : public UUserWidget
 {
+public:
+  UDungeonMainWidget(const FObjectInitializer& ObjectInitializer);
+  virtual bool Initialize() override;
+private:
   GENERATED_BODY()
 
   DECLARE_DELEGATE_OneParam(FOnFocusLost, const FFocusEvent&)
@@ -35,4 +40,12 @@ public:
   TWeakObjectPtr<UButton> Move;
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
   TWeakObjectPtr<UNativeWidgetHost> UnitDisplay;
+  
+  UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
+  TWeakObjectPtr<UMainMapMenu> MainMapMenu;
+  
+  UPROPERTY(EditAnywhere, BlueprintReadWrite)
+  ESlateVisibility MapMenuVisibility;
+  UFUNCTION()
+  ESlateVisibility GetMainVis();
 };

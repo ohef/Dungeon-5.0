@@ -2,8 +2,8 @@
 
 #include <CoreMinimal.h>
 
-template <typename FIntPointerHolder = TArray<FIntPoint>>
-FIntPointerHolder manhattanReachablePoints(int xLimit, int yLimit, int distance, const FIntPoint& point)
+template <template<typename> typename TContainer = TSet>
+TContainer<FIntPoint> manhattanReachablePoints(int xLimit, int yLimit, int distance, const FIntPoint& point)
 {
   int32 distanceHalved = distance;
   auto xAxis = TRange<int>(point.X - distanceHalved, point.X + distanceHalved);
@@ -15,7 +15,7 @@ FIntPointerHolder manhattanReachablePoints(int xLimit, int yLimit, int distance,
   auto restrictedXAxis = TRange<int>::Intersection(xAxis, widthLimit);
   auto restrictedYAxis = TRange<int>::Intersection(yAxis, heightLimit);
 
-  FIntPointerHolder toReturn;
+  TContainer<FIntPoint> toReturn;
 
   for (int i = restrictedXAxis.GetLowerBoundValue(); i <= restrictedXAxis.GetUpperBoundValue(); i++)
     for (int j = restrictedYAxis.GetLowerBoundValue(); j <= restrictedYAxis.GetUpperBoundValue(); j++)
