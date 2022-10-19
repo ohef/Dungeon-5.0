@@ -24,7 +24,7 @@ void ADungeonPlayerController::RaiseQuery()
 void ADungeonPlayerController::GoBackInteraction()
 {
   ADungeonGameModeBase* DungeonGameModeBase = GetWorld()->GetAuthGameMode<ADungeonGameModeBase>();
-  DungeonGameModeBase->GoBackOnInputState();
+  DungeonGameModeBase->store->dispatch(TDungeonAction(TInPlaceType<FBackAction>{}));
 }
 
 void ADungeonPlayerController::SetupInputComponent()

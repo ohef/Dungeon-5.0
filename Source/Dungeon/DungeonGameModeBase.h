@@ -23,6 +23,10 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "lager/lenses/at.hpp"
 #include "lager/lenses/attr.hpp"
+#include "lager/lenses.hpp"
+#include "lager/store.hpp"
+#include "lager/util.hpp"
+#include "lager/lenses/optional.hpp"
 #include "State/State.h"
 #include "Widget/Menus/EasyMenu.h"
 
@@ -86,11 +90,12 @@ FText Get##managedPointer####fieldName() const \
 }
 
 using TAction = TVariant<
-FEmptyVariantState,
-FMoveAction,
-FCombatAction,
-FEndTurnAction,
-FWaitAction>;
+  FEmptyVariantState,
+  FMoveAction,
+  FCombatAction,
+  FEndTurnAction,
+  FWaitAction
+>;
 
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase, public TSharedFromThis<ADungeonGameModeBase>
@@ -103,7 +108,7 @@ public:
   virtual void BeginPlay() override;
   virtual void Tick(float time) override;
   void UpdateUnitActor(const FDungeonLogicUnit& unit);
-  void Reduce(TAction unionAction);
+  void Dispatch(TAction unionAction);
 
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Id)
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Movement)
@@ -117,7 +122,7 @@ public:
   UPROPERTY(EditAnywhere)
   UClass* TileShowPrefab;
   UPROPERTY(EditAnywhere)
-  FDungeonLogicGameState Game;
+  FDungeonWorldState Game;
   UPROPERTY(EditAnywhere)
   UClass* UnitActorPrefab;
   UPROPERTY(EditAnywhere)
@@ -140,6 +145,8 @@ public:
   TSubclassOf<UDungeonMainWidget> MainWidgetClass;
   TQueue<TUniquePtr<FTimeline>> AnimationQueue;
   TQueue<TTuple<TUniquePtr<FAction>, TFunction<void()>>> reactEventQueue;
+  
+  TUniquePtr<lager::store<TDungeonAction, FDungeonWorldState>> store;
 
   void GoBackOnInputState();
 
@@ -160,8 +167,6 @@ public:
   void CommitAndGotoBaseState();
 
   void React();
-
-  FAttackResults AttackVisualization(int attackingUnitId);
 
   TOptional<FDungeonLogicUnit> FindUnit(FIntPoint pt);
 
@@ -184,20 +189,13 @@ public:
     curve->FloatCurves[1].AddKey(0.0, from.Y);
     curve->FloatCurves[1].AddKey(time, to.Y);
 
-    if constexpr (TIsDerivedFrom<T, AActor>::Value)
+    onUpdate.BindLambda([movable](FVector interp)
     {
-      onUpdate.BindLambda([movable](FVector interp)
-      {
+      if constexpr (TIsDerivedFrom<T, AActor>::Value)
         movable->SetActorLocation(interp, false);
-      });
-    }
-    else
-    {
-      onUpdate.BindLambda([movable](FVector interp)
-      {
+      else
         movable->SetWorldLocation(interp, false);
-      });
-    }
+    });
 
     onFinish.BindLambda([this]()
     {
@@ -220,15 +218,40 @@ using namespace lager::lenses;
 
 const auto gameLens = attr(&ADungeonGameModeBase::Game);
 const auto mapLens = gameLens
-  | attr(&FDungeonLogicGameState::map);
+  | attr(&FDungeonWorldState::map);
+
+const auto idToUnitLens = [](int unitId)
+{
+  return mapLens
+    | attr(&FDungeonLogicMap::loadedUnits)
+    | Find(unitId);
+};
+
+const auto pointToUnitLens =[](FIntPoint& pt)
+{
+  return zug::comp([pt](auto&& f) {
+    return [pt,f = LAGER_FWD(f)](auto&& p) {
+      auto lens1 = mapLens
+        | attr(&FDungeonLogicMap::unitAssignment)
+        | Find(pt)
+        | value_or(-1);
+      
+      auto lens1Eval = lens1([](auto&& v)
+      {
+        return lager::detail::make_const_functor(std::forward<decltype(v)>(v));
+      })(p).value;
+      
+      return idToUnitLens(lens1Eval)(f)(p);
+    };
+  }); 
+};
 
 const auto turnStateLens = gameLens
-  | attr(&FDungeonLogicGameState::turnState);
+  | attr(&FDungeonWorldState::TurnState);
 
 const auto isUnitFinishedLens = [&](int id)
 {
   return turnStateLens
-    | attr(&TurnState::unitsFinished)
+    | attr(&FTurnState::unitsFinished)
     | Find(id);
 };
-

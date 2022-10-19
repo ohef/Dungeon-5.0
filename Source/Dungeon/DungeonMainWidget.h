@@ -2,12 +2,18 @@
 
 #pragma once
 
+
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/Button.h"
 #include "Components/NativeWidgetHost.h"
 #include "Components/VerticalBox.h"
 #include "Widget/Menus/MainMapMenu.h"
+
+#include "lager/cursor.hpp"
+#include "lager/reader.hpp"
+#include "Logic/DungeonGameState.h"
+
 #include "DungeonMainWidget.generated.h"
 
 /**
@@ -31,7 +37,7 @@ public:
   UWidgetAnimation* OnStart;
   
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
-  TWeakObjectPtr<UVerticalBox> MainMenu;
+  TWeakObjectPtr<UVerticalBox> UnitActionMenu;
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
   TWeakObjectPtr<UButton> Attack;
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
@@ -40,12 +46,16 @@ public:
   TWeakObjectPtr<UButton> Move;
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
   TWeakObjectPtr<UNativeWidgetHost> UnitDisplay;
-  
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
   TWeakObjectPtr<UMainMapMenu> MainMapMenu;
   
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   ESlateVisibility MapMenuVisibility;
+  
+  lager::reader<TOptional<FMainMenu>> interactionCursor;
+  
+  void React(TOptional<FMainMenu> visible);
+  
   UFUNCTION()
   ESlateVisibility GetMainVis();
 };

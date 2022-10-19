@@ -5,6 +5,7 @@
 #include "SelectingTargetGameState.h"
 #include "Algo/Accumulate.h"
 #include "Logic/SimpleTileGraph.h"
+#include "Logic/util.h"
 
 void FSelectingMenu::Enter()
 {
@@ -16,7 +17,7 @@ void FSelectingMenu::Enter()
   }
 
   MapCursorPawn->MovementComponent->ToggleActive();
-  gameMode.MainWidget->MainMenu->SetVisibility(ESlateVisibility::Visible);
+  gameMode.MainWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Visible);
   gameMode.RefocusMenu();
 
   // auto easyMenu = gameMode.MainWidget->WidgetTree->ConstructWidget<UEasyMenu>();
@@ -42,13 +43,13 @@ void FSelectingMenu::Exit()
 {
   AMapCursorPawn* MapCursorPawn = gameMode.GetMapCursorPawn();
   MapCursorPawn->MovementComponent->ToggleActive();
-  gameMode.MainWidget->MainMenu->SetVisibility(ESlateVisibility::Collapsed);
+  gameMode.MainWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 FReply FSelectingMenu::OnAttackButtonClick()
 {
   TFunction<void(FIntPoint)> cursorQueryHandler =
-    [ &, TilesExtent = targets.FindAndRemoveChecked(ETargetsAvailableId::attack) ]
+    [ &, TilesExtent = targets.FindChecked(ETargetsAvailableId::attack) ]
   (FIntPoint pt)
   {
     UKismetSystemLibrary::PrintString(&gameMode);
@@ -111,7 +112,7 @@ FReply FSelectingMenu::OnAttackButtonClick()
         auto damage = initiator.damage - floor((0.05 * results[0].order));
         target.HitPoints -= damage;
 
-        gameMode.Reduce(TAction(TInPlaceType<FCombatAction>{}, sourceID, target, damage, pt));
+        gameMode.Dispatch(TAction(TInPlaceType<FCombatAction>{}, sourceID, target, damage, pt));
       });
     gameMode.FinishAddComponent(singleSubmitHandler, false, FTransform());
     gameMode.InputStateTransition(new FAttackState(gameMode, singleSubmitHandler));
@@ -126,7 +127,7 @@ FReply FSelectingMenu::OnAttackButtonClick()
 
 FReply FSelectingMenu::OnWaitButtonClick()
 {
-  gameMode.Reduce(TAction(TInPlaceType<FWaitAction>{}, this->initiatingUnit->Id));
+  gameMode.Dispatch(TAction(TInPlaceType<FWaitAction>{}, this->initiatingUnit->Id));
   return FReply::Handled();
 }
 
@@ -139,7 +140,7 @@ FReply FSelectingMenu::OnMoveSelected()
   {
     if (gameMode.canUnitMoveToPointInRange(initiatingUnit->Id, target, TilesExtent))
     {
-      gameMode.Reduce(TAction(TInPlaceType<FMoveAction>{}, initiatingUnit->Id, target));
+      gameMode.Dispatch(TAction(TInPlaceType<FMoveAction>{}, initiatingUnit->Id, target));
     }
   };
 

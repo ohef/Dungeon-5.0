@@ -19,8 +19,6 @@
 #include <memory>
 #include <type_traits>
 
-#undef check
-
 namespace immer {
 namespace detail {
 namespace rbts {

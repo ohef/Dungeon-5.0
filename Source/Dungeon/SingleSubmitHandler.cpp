@@ -94,15 +94,9 @@ void USingleSubmitHandler::DoSubmit(FIntPoint)
   }
 }
 
-void USingleSubmitHandler::TickComponent(float DeltaTime, ELevelTick TickType,
-                                         FActorComponentTickFunction* ThisTickFunction)
+void USingleSubmitHandler::DoDaTick(float DeltaTime)
 {
-  Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
   timeline.TickTimeline(DeltaTime);
-
-  // FString output;
-  // FJsonObjectConverter::UStructToJsonObjectString(timeline,output);
-  // UE_LOG(LogTemp, Error, TEXT("%s"), ToCStr(output.) );
 
   auto output =
     Algo::Accumulate(handlers, FString{}, [](FString acc, decltype(handlers)::ElementType val)
@@ -110,17 +104,16 @@ void USingleSubmitHandler::TickComponent(float DeltaTime, ELevelTick TickType,
       return acc.Append(FString::Format(TEXT("Min {0}, Max {1}, Priority {2}\n"), {val.Min, val.Max, val.order}));
     });
 
-  // GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, output, true,
-  //                                  FVector2D::UnitVector * 2.0);
-  // GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Blue, FString::SanitizeFloat(timeline.GetPlaybackPosition()), true,
-  //                                  FVector2D::UnitVector * 2.0);
-
-  // UE_LOG(LogTemp, Error, TEXT("%s"), timeline.GetPlaybackPosition());
-  // UKismetSystemLibrary::PrintString(timeline.GetPlaybackPosition());
-
   APlayerController* InPlayerController = this->GetWorld()->GetFirstPlayerController();
   FVector2D ScreenPosition;
   UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(InPlayerController, focusWorldLocation, ScreenPosition,
                                                              false);
   HandlerWidget->SetRenderTranslation(FVector2D(ScreenPosition));
+}
+
+void USingleSubmitHandler::TickComponent(float DeltaTime, ELevelTick TickType,
+                                         FActorComponentTickFunction* ThisTickFunction)
+{
+  Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+  DoDaTick(DeltaTime);
 }

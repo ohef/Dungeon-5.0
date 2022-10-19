@@ -3,8 +3,8 @@
 #include "SelectingMenu.h"
 #include "Algo/Copy.h"
 #include "lager/lenses.hpp"
-#include "lager/sensor.hpp"
 #include "lager/state.hpp"
+#include "Logic/util.h"
 
 FSelectingGameState::FSelectingGameState(ADungeonGameModeBase& GameMode): gameMode(GameMode), foundUnit(nullptr)
 {
@@ -89,7 +89,7 @@ void FSelectingGameState::Enter()
 {
   AMapCursorPawn* MapCursorPawn = gameMode.GetMapCursorPawn();
   OnCursorPositionUpdate(MapCursorPawn->CurrentPosition);
-  gameMode.MainWidget->MainMenu->SetVisibility(ESlateVisibility::Collapsed);
+  gameMode.MainWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Collapsed);
 
   //TODO: Hmm making the assumption that we're the set state? HMM
   auto queryDelegate = MapCursorPawn->QueryInput.AddRaw(this, &FSelectingGameState::OnCursorQuery);

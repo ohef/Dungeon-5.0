@@ -4,7 +4,6 @@
 
 #include "unit.h"
 #include "tile.h"
-#include "util.h"
 
 #include "map.generated.h"
 

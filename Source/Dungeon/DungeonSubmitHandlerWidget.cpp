@@ -27,9 +27,11 @@ void UDungeonSubmitHandlerWidget::HandleHit()
 void UDungeonSubmitHandlerWidget::NativeOnInitialized()
 {
   Super::NativeOnInitialized();
+  TArray<FIntervalPriority> IntervalPriorities = singleSubmitHandler->handlers;
+  float TimelineLength = singleSubmitHandler->totalLength;
+  
   FVector2D circleSize = FVector2D{500, 500};
-
-  for (auto interval : singleSubmitHandler->handlers)
+  for (auto interval : IntervalPriorities)
   {
     auto circleWidget = NewObject<UBorder>(
       this, UBorder::StaticClass());
@@ -38,10 +40,9 @@ void UDungeonSubmitHandlerWidget::NativeOnInitialized()
     PanelSlot->SetPosition({0, 0});
     PanelSlot->SetAlignment({0.5, 0.5});
     auto dynamicMaterial = UKismetMaterialLibrary::CreateDynamicMaterialInstance(this, CircleMaterial);
-    float TimelineLength = singleSubmitHandler->totalLength;
-    double minR = 1.0 - ( interval.Min / TimelineLength );
-    dynamicMaterial->SetScalarParameterValue(FName(TEXT("InnerRadius")),minR * .5);
-    double maxR = ( 1.0 - interval.Max / TimelineLength );
+    double minR = 1.0 - (interval.Min / TimelineLength);
+    dynamicMaterial->SetScalarParameterValue(FName(TEXT("InnerRadius")), minR * .5);
+    double maxR = (1.0 - interval.Max / TimelineLength);
     dynamicMaterial->SetScalarParameterValue(FName(TEXT("OuterRadius")), maxR * .5);
     circleWidget->SetBrushFromMaterial(dynamicMaterial);
     circleWidget->SetBrushColor(FLinearColor::White.CopyWithNewOpacity(.25));
@@ -53,12 +54,10 @@ void UDungeonSubmitHandlerWidget::NativeOnInitialized()
 void UDungeonSubmitHandlerWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
   Super::NativeTick(MyGeometry, InDeltaTime);
+  FTimeline Timeline = this->singleSubmitHandler->timeline;
+  float PlaybackPosition = Timeline.GetPlaybackPosition();
+  float TimelineLength = Timeline.GetTimelineLength();
 
-  UCanvasPanelSlot* CanvasPanelSlot = CastChecked<UCanvasPanelSlot>(OuterCircle->Slot);
-  if (this->singleSubmitHandler.IsValid())
-  {
-    FTimeline Timeline = this->singleSubmitHandler->timeline;
-    CanvasPanelSlot->SetSize(
-      InitialOuterCircleSize * (1.0 - (Timeline.GetPlaybackPosition() / Timeline.GetTimelineLength())));
-  }
+  CastChecked<UCanvasPanelSlot>(OuterCircle->Slot)->SetSize(
+    InitialOuterCircleSize * (1.0 - (PlaybackPosition / TimelineLength)));
 }

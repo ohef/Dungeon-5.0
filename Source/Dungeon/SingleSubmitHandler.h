@@ -58,6 +58,7 @@ public:
   FSlateBrush materialBrush;
 
   virtual void DoSubmit(FIntPoint);
+  void DoDaTick(float DeltaTime);
   TArray<FIntervalPriority> handlers;
   
 public:
