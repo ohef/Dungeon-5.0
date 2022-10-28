@@ -8,9 +8,11 @@
 #include <Core/Public/Containers/Array.h>
 
 #include "DungeonConstants.h"
-#include "LatentActions.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/DrawFrustumComponent.h"
+#include "Dungeon/DungeonGameModeBase.h"
+#include "Dungeon/Lenses/model.hpp"
+#include "Dungeon/Lenses/SimpleCastTo.h"
 #include "GameFramework/SpringArmComponent.h"
 
 AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
@@ -59,6 +61,23 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
 void AMapCursorPawn::BeginPlay()
 {
   Super::BeginPlay();
+  reader = lager::view(worldStoreLens, GetWorld())->zoom(SimpleCastTo<FDungeonWorldState>).make();
+  reader.bind([&](FDungeonWorldState model)
+  {
+    Visit(lager::visitor{
+            [&](auto context)
+            {
+              if constexpr (TIsInTypeUnion<decltype(context), FMainMenu, FUnitMenu, FUnitInteraction>::Value)
+              {
+                MovementComponent->SetActive(false);
+              }
+              else
+              {
+                MovementComponent->SetActive(true);
+              }
+            },
+          }, model.InteractionContext);
+  });
 }
 
 void AMapCursorPawn::Tick(float DeltaTime)

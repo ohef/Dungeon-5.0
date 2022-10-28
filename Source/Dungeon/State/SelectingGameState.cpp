@@ -2,6 +2,7 @@
 
 #include "SelectingMenu.h"
 #include "Algo/Copy.h"
+#include "Dungeon/Lenses/model.hpp"
 #include "lager/lenses.hpp"
 #include "lager/state.hpp"
 #include "Logic/util.h"
@@ -18,8 +19,8 @@ void FSelectingGameState::OnCursorPositionUpdate(FIntPoint CurrentPosition)
   this->targets.Find(ETargetsAvailableId::move)->Empty();
   this->targets.Find(ETargetsAvailableId::attack)->Empty();
 
-  FDungeonLogicMap& DungeonLogicMap = lager::view(mapLens, gameMode);
-  TMap<FIntPoint, int>& unitAssignmentMap = DungeonLogicMap.unitAssignment;
+  auto& DungeonLogicMap = lager::view(mapLens, gameMode);
+  auto& unitAssignmentMap = DungeonLogicMap.unitAssignment;
   TSet<FIntPoint> points;
   bool hasUnit = unitAssignmentMap.Contains(CurrentPosition);
 

@@ -6,7 +6,6 @@
 #include <Logic/DungeonGameState.h>
 
 #include "CoreMinimal.h"
-#include "DungeonMainWidget.h"
 #include "TargetsAvailableId.h"
 #include "Actions/Action.h"
 #include "Actions/CombatAction.h"
@@ -21,13 +20,9 @@
 #include "Engine/DataTable.h"
 #include "GameFramework/GameModeBase.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "lager/lenses/at.hpp"
-#include "lager/lenses/attr.hpp"
-#include "lager/lenses.hpp"
 #include "lager/store.hpp"
-#include "lager/util.hpp"
-#include "lager/lenses/optional.hpp"
 #include "State/State.h"
+#include "Widget/DungeonMainWidget.h"
 #include "Widget/Menus/EasyMenu.h"
 
 #include "DungeonGameModeBase.generated.h"
@@ -66,7 +61,9 @@ struct FStructThing : public FTableRowBase
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAttackDelegate, FAttackResults const &, AttackResults);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCombatActionEvent, FCombatAction, action);
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FUnitUpdate, FDungeonLogicUnit, unit);
 
 struct FCoerceToFText
@@ -89,13 +86,36 @@ FText Get##managedPointer####fieldName() const \
   return managedPointer == nullptr ? FText() : FCoerceToFText::Value(managedPointer->fieldName); \
 }
 
-using TAction = TVariant<
-  FEmptyVariantState,
-  FMoveAction,
-  FCombatAction,
-  FEndTurnAction,
-  FWaitAction
->;
+template <typename TModel>
+struct FHistoryModel
+{
+  TArray<TModel> stateStack;
+
+  FHistoryModel(TModel&& model = {}) : stateStack({model})
+  {
+  }
+
+  operator TModel&() &
+  {
+    return stateStack.Top();
+  }
+
+  operator const TModel&() const &
+  {
+    return stateStack.Top();
+  }
+};
+
+struct undo_action
+{
+};
+
+struct redo_action
+{
+};
+
+template <typename TTAction>
+using THistoryAction = TVariant<TTAction, undo_action>;
 
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase, public TSharedFromThis<ADungeonGameModeBase>
@@ -145,8 +165,10 @@ public:
   TSubclassOf<UDungeonMainWidget> MainWidgetClass;
   TQueue<TUniquePtr<FTimeline>> AnimationQueue;
   TQueue<TTuple<TUniquePtr<FAction>, TFunction<void()>>> reactEventQueue;
-  
-  TUniquePtr<lager::store<TDungeonAction, FDungeonWorldState>> store;
+
+  using TStoreAction = THistoryAction<TAction>;
+  // TUniquePtr<lager::store<TDungeonAction, FDungeonWorldState>> store;
+  TUniquePtr<lager::store<THistoryAction<TAction>, FHistoryModel<FDungeonWorldState>>> store;
 
   void GoBackOnInputState();
 
@@ -212,46 +234,4 @@ public:
   AMapCursorPawn* GetMapCursorPawn();
 
   bool canUnitMoveToPointInRange(int unitId, FIntPoint destination, const TSet<FIntPoint>& movementExtent);
-};
-
-using namespace lager::lenses;
-
-const auto gameLens = attr(&ADungeonGameModeBase::Game);
-const auto mapLens = gameLens
-  | attr(&FDungeonWorldState::map);
-
-const auto idToUnitLens = [](int unitId)
-{
-  return mapLens
-    | attr(&FDungeonLogicMap::loadedUnits)
-    | Find(unitId);
-};
-
-const auto pointToUnitLens =[](FIntPoint& pt)
-{
-  return zug::comp([pt](auto&& f) {
-    return [pt,f = LAGER_FWD(f)](auto&& p) {
-      auto lens1 = mapLens
-        | attr(&FDungeonLogicMap::unitAssignment)
-        | Find(pt)
-        | value_or(-1);
-      
-      auto lens1Eval = lens1([](auto&& v)
-      {
-        return lager::detail::make_const_functor(std::forward<decltype(v)>(v));
-      })(p).value;
-      
-      return idToUnitLens(lens1Eval)(f)(p);
-    };
-  }); 
-};
-
-const auto turnStateLens = gameLens
-  | attr(&FDungeonWorldState::TurnState);
-
-const auto isUnitFinishedLens = [&](int id)
-{
-  return turnStateLens
-    | attr(&FTurnState::unitsFinished)
-    | Find(id);
 };

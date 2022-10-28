@@ -19,10 +19,4 @@ struct FUnitContextAction : public FAction
   }
 };
 
-// USTRUCT()
-// struct FWaitAction : public FUnitContextAction
-// {
-//   GENERATED_BODY()
-// };
-
 using FWaitAction = FUnitContextAction;

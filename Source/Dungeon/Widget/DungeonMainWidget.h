@@ -8,11 +8,11 @@
 #include "Components/Button.h"
 #include "Components/NativeWidgetHost.h"
 #include "Components/VerticalBox.h"
-#include "Widget/Menus/MainMapMenu.h"
 
 #include "lager/cursor.hpp"
 #include "lager/reader.hpp"
 #include "Logic/DungeonGameState.h"
+#include "Menus/MainMapMenu.h"
 
 #include "DungeonMainWidget.generated.h"
 
@@ -55,7 +55,4 @@ public:
   lager::reader<TOptional<FMainMenu>> interactionCursor;
   
   void React(TOptional<FMainMenu> visible);
-  
-  UFUNCTION()
-  ESlateVisibility GetMainVis();
 };

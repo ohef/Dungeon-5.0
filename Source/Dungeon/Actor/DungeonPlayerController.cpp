@@ -24,7 +24,9 @@ void ADungeonPlayerController::RaiseQuery()
 void ADungeonPlayerController::GoBackInteraction()
 {
   ADungeonGameModeBase* DungeonGameModeBase = GetWorld()->GetAuthGameMode<ADungeonGameModeBase>();
-  DungeonGameModeBase->store->dispatch(TDungeonAction(TInPlaceType<FBackAction>{}));
+  auto historyAction = THistoryAction<TAction>(TInPlaceType<TAction>{});
+  historyAction.Set<TAction>(TAction(TInPlaceType<FBackAction>{}));
+  DungeonGameModeBase->store->dispatch(historyAction);
 }
 
 void ADungeonPlayerController::SetupInputComponent()

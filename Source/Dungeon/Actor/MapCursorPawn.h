@@ -12,6 +12,8 @@
 #include "Dungeon/Dungeon.h"
 #include "GameFramework/FloatingPawnMovement.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "lager/reader.hpp"
+#include "Logic/DungeonGameState.h"
 #include "MapCursorPawn.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCursorEvent, FIntPoint);
@@ -21,6 +23,12 @@ struct ZoomLevelNode
 {
   int ZoomLevel;
   ZoomLevelNode* NextNode;
+};
+
+template <typename T, typename ...TArgs>
+struct TIsInTypeUnion
+{
+  enum { Value = TOr<TIsSame<T, TArgs>...>::Value };
 };
 
 UCLASS()
@@ -45,6 +53,8 @@ protected:
   
 public:
   void CycleZoom();
+  
+  lager::reader<FDungeonWorldState> reader;
 
   UFUNCTION(BlueprintCallable)
   virtual void Tick(float DeltaTime) override;

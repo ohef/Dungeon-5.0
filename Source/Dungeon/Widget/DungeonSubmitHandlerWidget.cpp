@@ -3,11 +3,11 @@
 
 #include "DungeonSubmitHandlerWidget.h"
 
-#include "SingleSubmitHandler.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/TimelineComponent.h"
+#include "Dungeon/SingleSubmitHandler.h"
 #include "Engine/Canvas.h"
 #include "Kismet/KismetMaterialLibrary.h"
 

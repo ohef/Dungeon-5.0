@@ -8,13 +8,14 @@ public class Dungeon : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		CppStandard = CppStandardVersion.Cpp17;
-
-		PublicDependencyModuleNames.AddRange(new string[]
-			{"Core", "CoreUObject", "Engine", "InputCore", "RenderCore", "Slate", "SlateCore", "UMG"});
-		PrivateDependencyModuleNames.AddRange(new string[] {"Json", "JsonUtilities", "Slate", "SlateCore", "UMG"});
 		OptimizeCode = CodeOptimization.Never;
 
-		PrivateIncludePaths.AddRange(new string[] {"Dungeon/ThirdParty"});
+		PublicDependencyModuleNames.AddRange(new string[]
+			{"Core", "CoreUObject", "Engine", "InputCore", "RenderCore", "Slate", "SlateCore", "UMG", "MainFrame"
+			});
+		PrivateDependencyModuleNames.AddRange(new string[] {"Json", "JsonUtilities", "Slate", "SlateCore", "UMG"});
+
+		PrivateIncludePaths.AddRange(new string[] {"Dungeon/ThirdParty", "Dungeon"});
 		Definitions.AddRange(new string[]
 		{
 			"LAGER_DISABLE_STORE_DEPENDENCY_CHECKS",

@@ -1,11 +1,12 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
+// #pragma push_macro("check")
+// #undef check
+
 #include "DungeonGameModeBase.h"
 
 #include <Logic/DungeonGameState.h>
 
-#include "DungeonMainWidget.h"
-#include "SingleSubmitHandler.h"
 #include "Actions/EndTurnAction.h"
 #include "Actor/DungeonPlayerController.h"
 #include "Actor/MapCursorPawn.h"
@@ -14,15 +15,17 @@
 #include "Blueprint/WidgetTree.h"
 #include "Engine/DataTable.h"
 #include "GameFramework/GameStateBase.h"
-#include "immer/map.hpp"
 #include "Kismet/KismetSystemLibrary.h"
-#include "lager/store.hpp"
-#include "lager/util.hpp"
-#include "lager/event_loop/manual.hpp"
-#include "lager/lenses/tuple.hpp"
+#include "Lenses/model.hpp"
 #include "Logic/SimpleTileGraph.h"
 #include "Serialization/Csv/CsvParser.h"
+#include "SingleSubmitHandler.h"
 #include "State/SelectingGameState.h"
+#include "immer/map.hpp"
+#include "lager/event_loop/manual.hpp"
+#include "lager/lenses/tuple.hpp"
+#include "lager/store.hpp"
+#include "lager/util.hpp"
 
 ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectInitializer) :
   Super(ObjectInitializer)
@@ -35,41 +38,128 @@ ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectIniti
   UnitTable->RowStruct = FDungeonLogicUnit::StaticStruct();
 }
 
-auto WorldStateReducer =
-  [](FDungeonWorldState model, TDungeonAction worldAction)
+template <typename InnerReducer,
+          typename WrappedModel,
+          typename WrappedAction>
+auto update_history(InnerReducer&& innerReducer,
+                    FHistoryModel<WrappedModel> m,
+                    THistoryAction<WrappedAction> a)
+-> FHistoryModel<WrappedModel>
 {
   return Visit(lager::visitor{
+                 [&](undo_action a)
+                 {
+                   m.stateStack.Pop();
+                   return m;
+                   // return update_history(r, m, goto_action{m.position - 1});
+                 },
+                 // [&] (redo_action a) {
+                 //     return update_history(r, m, goto_action{m.position + 1});
+                 // },
+                 // [&] (goto_action a) {
+                 //     if (a.position >= 0 && a.position < m.history.size())
+                 //         m.position = a.position;
+                 //     return m;
+                 // },
+                 [&](WrappedAction action)
+                 {
+                   auto updatedModel = innerReducer(m, action);
+                   if (&updatedModel != &(m.stateStack.Top()))
+                   {
+                     m.stateStack.Push(updatedModel);
+                   }
+                   return m;
+                 },
+               }, a);
+}
+
+auto WorldStateReducer =
+  [](FDungeonWorldState Model, TAction worldAction)
+{
+  return Visit(lager::visitor
+               {
                  [&](FBackAction)
                  {
                    return Visit(lager::visitor{
                                   [&](auto all)
                                   {
-                                    model.InteractionContext.Set<FMainMenu>(FMainMenu());
-                                    return std::make_pair(model, lager::noop);
+                                    Model.InteractionContext.Set<FMainMenu>(FMainMenu());
+                                    return Model;
                                   },
                                   [&](FMainMenu)
                                   {
-                                    model.InteractionContext.Set<FSelectingUnit>(FSelectingUnit());
-                                    return std::make_pair(model, lager::noop);
+                                    Model.InteractionContext.Set<FSelectingUnit>(FSelectingUnit());
+                                    return Model;
                                   }
-                                }, model.InteractionContext);
+                                }, Model.InteractionContext);
                  },
-                 [&](FEmptyVariantState)
+                 [&](FEndTurnAction action)
                  {
-                   return std::make_pair(model, lager::noop);
-                 }
+                   const int MAX_PLAYERS = 2;
+                   const auto nextTeamId = (Model.TurnState.teamId % MAX_PLAYERS) + 1;
+
+                   Model.TurnState = {nextTeamId};
+                   return Model;
+                 },
+                 [&](auto&& action)
+                 {
+                   using T = typename TDecay<decltype(action)>::Type;
+                   if constexpr (TIsInTypeUnion<T, FCombatAction, FMoveAction, FWaitAction>::Value)
+                   {
+                     FDungeonLogicUnit& foundUnit = Model.map.loadedUnits.FindChecked(action.InitiatorId);
+                     foundUnit.state = UnitState::ActionTaken;
+                     Model.TurnState.unitsFinished.Add(foundUnit.Id);
+
+                     lager::visitor{
+                       [&](FMoveAction MoveAction)
+                       {
+                         FDungeonLogicMap& DungeonLogicMap = Model.map;
+                         DungeonLogicMap.unitAssignment.Remove(
+                           *DungeonLogicMap.unitAssignment.FindKey(MoveAction.InitiatorId));
+                         DungeonLogicMap.unitAssignment.
+                                         Add(MoveAction.Destination, MoveAction.InitiatorId);
+                       },
+                       [&](FCombatAction CombatAction)
+                       {
+                         FDungeonLogicUnit& Unit = CombatAction.updatedUnit;
+                         Unit.state = Model.TurnState.unitsFinished.Contains(Unit.Id)
+                                        ? UnitState::ActionTaken
+                                        : UnitState::Free;
+                       },
+                       [&](FWaitAction WaitAction)
+                       {
+                       }
+                     }(action);
+                   }
+                   
+                   Model.InteractionContext.Set<FSelectingUnit>(FSelectingUnit{});
+                   return Model;
+                 },
                }, worldAction);
+};
+
+auto with_history = [](auto next)
+{
+  return [next](
+    auto action,
+    auto&& model,
+    auto&& reducer,
+    auto&& loop,
+    auto&& deps,
+    auto&& tags)
+  {
+    return next(action,
+                model,
+                [reducer](auto m, auto a) { return update_history(reducer, m, a); },
+                LAGER_FWD(loop),
+                LAGER_FWD(deps),
+                LAGER_FWD(tags));
+  };
 };
 
 void ADungeonGameModeBase::BeginPlay()
 {
   Super::BeginPlay();
-
-  store = MakeUnique<lager::store<TDungeonAction, FDungeonWorldState>>(
-    lager::make_store<TDungeonAction>(
-      FDungeonWorldState(this->Game),
-      lager::with_manual_event_loop{},
-      lager::with_reducer(WorldStateReducer)));
 
   TArray<FDungeonLogicUnitRow*> unitsArray;
   UnitTable->GetAllRows(TEXT(""), unitsArray);
@@ -114,13 +204,28 @@ void ADungeonGameModeBase::BeginPlay()
           Game.map.unitAssignment.Add(positionPlacement, dataIndex);
 
           UClass* UnrealActor = zaRow.UnrealActor.Get();
-          auto unitActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnrealActor, FVector::ZeroVector,
-                                                                     FRotator::ZeroRotator);
+          FTransform Transform = FTransform{FRotator::ZeroRotator, FVector::ZeroVector};
+          auto unitActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnrealActor, Transform);
+          unitActor->id = zaunit.Id;
+
           Game.unitIdToActor.Add(zaunit.Id, unitActor);
           unitActor->SetActorLocation(TilePositionToWorldPoint(positionPlacement));
         }
       }
     }
+  }
+
+  store = MakeUnique<lager::store<THistoryAction<TAction>, FHistoryModel<FDungeonWorldState>>>(
+    lager::make_store<THistoryAction<TAction>>(
+      FHistoryModel<FDungeonWorldState>(FDungeonWorldState(this->Game)),
+      lager::with_manual_event_loop{},
+      lager::with_reducer(WorldStateReducer),
+      with_history
+    ));
+
+  for (auto UnitIdToActor : static_cast<const FDungeonWorldState>(store->get()).unitIdToActor)
+  {
+    UnitIdToActor.Value->hookIntoStore();
   }
 
   FString Result;
@@ -147,51 +252,45 @@ void ADungeonGameModeBase::BeginPlay()
 
   CombatActionEvent.AddDynamic(this, &ADungeonGameModeBase::ApplyAction);
 
-  AMapCursorPawn* mapPawn = static_cast<AMapCursorPawn*>(GetWorld()->GetFirstPlayerController()->GetPawn());
-  if (mapPawn != NULL)
+  MainWidget = CreateWidget<UDungeonMainWidget>(this->GetWorld()->GetFirstPlayerController(), MainWidgetClass);
+  MainWidget->AddToViewport();
+
+  auto InAttribute = FCoreStyle::GetDefaultFontStyle("Bold", 30);
+  InAttribute.OutlineSettings.OutlineSize = 3.0;
+  style = FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
+  style.SetColorAndOpacity(FSlateColor(FLinearColor::White));
+
+  auto styleSetter = [&](FString&& fieldName, const auto& methodPointer) -> decltype(SVerticalBox::Slot())
   {
-    MainWidget = CreateWidget<UDungeonMainWidget>(this->GetWorld()->GetFirstPlayerController(), MainWidgetClass);
-    MainWidget->AddToViewport();
-
-    auto InAttribute = FCoreStyle::GetDefaultFontStyle("Bold", 30);
-    InAttribute.OutlineSettings.OutlineSize = 3.0;
-    style = FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
-    style.SetColorAndOpacity(FSlateColor(FLinearColor::White));
-
-    auto styleSetter = [&](FString&& fieldName, const auto& methodPointer) -> decltype(SVerticalBox::Slot())
-    {
-      return SVerticalBox::Slot().AutoHeight()[
-        SNew(SHorizontalBox)
-        + SHorizontalBox::Slot()
-        [
-          SNew(STextBlock)
+    return SVerticalBox::Slot().AutoHeight()[
+      SNew(SHorizontalBox)
+      + SHorizontalBox::Slot()
+      [
+        SNew(STextBlock)
            .TextStyle(&style)
            .Font(InAttribute)
            .Text(FText::FromString(fieldName))
-        ]
-        + SHorizontalBox::Slot()
-        [
-          SNew(STextBlock)
+      ]
+      + SHorizontalBox::Slot()
+      [
+        SNew(STextBlock)
            .TextStyle(&style)
            .Font(InAttribute)
            .Text_UObject(this, methodPointer)
-        ]
-      ];
-    };
+      ]
+    ];
+  };
 
-    MainWidget->UnitDisplay->SetContent(
-      SNew(SVerticalBox)
-      + styleSetter("Name", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorName)
-      + styleSetter("HitPoints", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorHitPoints)
-      + styleSetter("Movement", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorMovement)
-      + styleSetter("Turn ID", &ADungeonGameModeBase::GetCurrentTurnId)
-    );
+  MainWidget->UnitDisplay->SetContent(
+    SNew(SVerticalBox)
+    + styleSetter("Name", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorName)
+    + styleSetter("HitPoints", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorHitPoints)
+    + styleSetter("Movement", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorMovement)
+    + styleSetter("Turn ID", &ADungeonGameModeBase::GetCurrentTurnId)
+  );
 
-    baseState = MakeShared<FSelectingGameState>(*this);
-    baseState->Enter();
-  }
-
-  Dispatch(TAction(TInPlaceType<FEndTurnAction>{}));
+  baseState = MakeShared<FSelectingGameState>(*this);
+  baseState->Enter();
 }
 
 void ADungeonGameModeBase::GoBackOnInputState()
@@ -221,18 +320,18 @@ void ADungeonGameModeBase::CommitAndGotoBaseState()
 
 void ADungeonGameModeBase::React()
 {
-  FDungeonLogicMap& DungeonLogicMap = Game.map;
-  for (auto LoadedUnit : DungeonLogicMap.loadedUnits)
-  {
-    TWeakObjectPtr<ADungeonUnitActor> DungeonUnitActor = lager::view(
-        attr(&ADungeonGameModeBase::Game)
-        | attr(&FDungeonWorldState::unitIdToActor)
-        | Find(LoadedUnit.Key), *this)
-      .value();
-    DungeonUnitActor->React(LoadedUnit.Value);
-    DungeonUnitActor->SetActorLocation(
-      FVector(*DungeonLogicMap.unitAssignment.FindKey(LoadedUnit.Key)) * TILE_POINT_SCALE);
-  }
+  // FDungeonLogicMap& DungeonLogicMap = Game.map;
+  // for (auto LoadedUnit : DungeonLogicMap.loadedUnits)
+  // {
+  //   TWeakObjectPtr<ADungeonUnitActor> DungeonUnitActor = lager::view(
+  //       attr(&ADungeonGameModeBase::Game)
+  //       | attr(&FDungeonWorldState::unitIdToActor)
+  //       | Find(LoadedUnit.Key), *this)
+  //     .value();
+  //   DungeonUnitActor->React(LoadedUnit.Value);
+  //   DungeonUnitActor->SetActorLocation(
+  //     FVector(*DungeonLogicMap.unitAssignment.FindKey(LoadedUnit.Key)) * TILE_POINT_SCALE);
+  // }
 }
 
 void ADungeonGameModeBase::ApplyAction(FCombatAction action)
@@ -303,66 +402,12 @@ void ADungeonGameModeBase::UpdateUnitActor(const FDungeonLogicUnit& unit)
 
 void ADungeonGameModeBase::Dispatch(TAction unionAction)
 {
-  Visit(lager::visitor{
-          [&](FEndTurnAction action)
-          {
-            const int MAX_PLAYERS = 2;
-            const auto nextTeamId = (this->Game.TurnState.teamId % MAX_PLAYERS) + 1;
-
-            Game.TurnState = {nextTeamId};
-          },
-          [&](auto action)
-          {
-            using T = decltype(action);
-            if constexpr (
-              TOr<
-                TIsSame<T, FCombatAction>,
-                TIsSame<T, FMoveAction>,
-                TIsSame<T, FWaitAction>
-              >::Value)
-            {
-              FDungeonLogicUnit foundUnit = Game.map.loadedUnits.FindChecked(action.InitiatorId);
-              foundUnit.state = UnitState::ActionTaken;
-              Game.TurnState.unitsFinished.Add(foundUnit.Id);
-
-              Visit(lager::visitor{
-                      [&](FMoveAction MoveAction)
-                      {
-                        FDungeonLogicMap& DungeonLogicMap = Game.map;
-                        DungeonLogicMap.unitAssignment.Remove(
-                          *DungeonLogicMap.unitAssignment.FindKey(MoveAction.InitiatorId));
-                        DungeonLogicMap.unitAssignment.Add(MoveAction.Destination, MoveAction.InitiatorId);
-
-                        UpdateUnitActor(foundUnit);
-                        CommitAndGotoBaseState();
-                      },
-                      [&](FCombatAction CombatAction)
-                      {
-                        CombatActionEvent.Broadcast(CombatAction);
-
-                        FDungeonLogicUnit& Unit = CombatAction.updatedUnit;
-                        Unit.state = Game.TurnState.unitsFinished.Contains(Unit.Id)
-                                       ? UnitState::ActionTaken
-                                       : UnitState::Free;
-                        UpdateUnitActor(Unit);
-                        UpdateUnitActor(foundUnit);
-                        CommitAndGotoBaseState();
-                      },
-                      [&](FWaitAction action)
-                      {
-                        UpdateUnitActor(foundUnit);
-                        CommitAndGotoBaseState();
-                      },
-                      [&](auto)
-                      {
-                      }
-                    }, unionAction);
-            }
-          }
-        }, unionAction);
+  store->dispatch(TStoreAction(TInPlaceType<TAction>{}, unionAction));
 }
 
 FText ADungeonGameModeBase::GetCurrentTurnId() const
 {
   return FCoerceToFText::Value(lager::view(turnStateLens, *this).teamId);
 }
+
+// #pragma pop_macro("check")

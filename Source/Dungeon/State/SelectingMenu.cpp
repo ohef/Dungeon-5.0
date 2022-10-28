@@ -20,14 +20,6 @@ void FSelectingMenu::Enter()
   gameMode.MainWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Visible);
   gameMode.RefocusMenu();
 
-  // auto easyMenu = gameMode.MainWidget->WidgetTree->ConstructWidget<UEasyMenu>();
-  // gameMode.MainWidget->MainMenu->AddChildToVerticalBox(easyMenu);
-  // UEasyMenuEntry* EasyMenuEntry = NewObject<UEasyMenuEntry>(easyMenu);
-  // EasyMenuEntry->Label = "PrintsCheckThisShitOutDude";
-  // EasyMenuEntry->handler = [&]() { UKismetSystemLibrary::PrintString(&gameMode, "dude check this shit out dude"); };
-  // UVerticalBoxSlot* VerticalBoxSlot = easyMenu->AddEntry(EasyMenuEntry);
-  // VerticalBoxSlot->SetPadding({5.0,5.0});
-
   //TODO: eh could template this somehow
   StaticCastSharedRef<SButton>(gameMode.MainWidget->Move->TakeWidget())
     ->SetOnClicked(FOnClicked::CreateSP(this->AsShared(), &FSelectingMenu::OnMoveSelected));

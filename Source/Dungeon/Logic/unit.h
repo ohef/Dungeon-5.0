@@ -46,6 +46,24 @@ struct FDungeonLogicUnit : public FTableRowBase
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   int attackRange;
+
+  friend bool operator==(const FDungeonLogicUnit& Lhs, const FDungeonLogicUnit& RHS)
+  {
+    return Lhs.Id == RHS.Id
+      && Lhs.damage == RHS.damage
+      && Lhs.HitPoints == RHS.HitPoints
+      && Lhs.state == RHS.state
+      && Lhs.Name == RHS.Name
+      && Lhs.Movement == RHS.Movement
+      && Lhs.teamId == RHS.teamId
+      && Lhs.attackRange == RHS.attackRange;
+  }
+
+  friend bool operator!=(const FDungeonLogicUnit& Lhs, const FDungeonLogicUnit& RHS)
+  {
+    return !(Lhs == RHS);
+  }
+  
 };
 
 USTRUCT()
