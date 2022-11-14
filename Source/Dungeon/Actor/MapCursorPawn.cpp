@@ -64,7 +64,6 @@ STRUCT_CONTEXT_SWITCH_VISITOR(FContextHandlerr)
 
   AMapCursorPawn* MapCursorPawn;
   FDelegateHandle QueryDelegate;
-  bool bound = false;
 
   FContextHandlerr(AMapCursorPawn* MapCursorPawn)
     : MapCursorPawn(MapCursorPawn), QueryDelegate(FDelegateHandle())
@@ -74,59 +73,15 @@ STRUCT_CONTEXT_SWITCH_VISITOR(FContextHandlerr)
 	template <class Tx>
 	void transition(Tx previouss, FSelectingUnitContext nextt)
 	{
-    UKismetSystemLibrary::PrintString(MapCursorPawn, "Entering and binding delegate");
-	  // QueryDelegate = MapCursorPawn->QueryInput.AddRaw(MapCursorPawn, &AMapCursorPawn::HandleSelectingQuery);
     QueryDelegate = MapCursorPawn->QueryInput.AddUObject(MapCursorPawn, &AMapCursorPawn::HandleSelectingQuery);
-    // bound = true;
 	}
 	
 	template <class Tx>
 	void transition(FSelectingUnitContext previouss, Tx nextt)
 	{
-    UKismetSystemLibrary::PrintString(MapCursorPawn, "Entering and unbinding delegate");
-    // if(bound)
-    // if(QueryDelegate.IsValid())
-    // {
-      // MapCursorPawn->QueryInput.Remove(QueryDelegate);
-      MapCursorPawn->QueryInput.RemoveAll(MapCursorPawn);
-      // bound = false;
-    // }
+    MapCursorPawn->QueryInput.RemoveAll(MapCursorPawn);
 	}
 };
-
-// struct FContextHandlerNew
-// {
-//   AMapCursorPawn* MapCursorPawn;
-//   
-//   template <typename Tx, TEnableIf<TNot<TIsSame<Tx, FSelectingUnitContext>>::Value>::Type = 0>
-//   void operator()(Tx l, FSelectingUnitContext r)
-//   {
-//     UKismetSystemLibrary::PrintString(MapCursorPawn, "test");
-//   }
-//
-//   template <typename Tx, TEnableIf<TNot<TIsSame<Tx, FSelectingUnitContext>>::Value>::Type = 0>
-//   void operator()(FSelectingUnitContext l, Tx r)
-//   {
-//     UKismetSystemLibrary::PrintString(MapCursorPawn, "test2");
-//   }
-//   
-//   template<typename Tx>
-//   void operator()(Tx l, Tx r)
-//   {
-//     UKismetSystemLibrary::PrintString(MapCursorPawn, "test3");
-//   }
-//   
-//   template<typename Tx, typename Ty, TEnableIf<TNot<
-//     TOr<
-//       TIsSame<typename TDecay<Tx>::Type, FSelectingUnitContext>,
-//       TIsSame<typename TDecay<Ty>::Type, FSelectingUnitContext>
-//       >
-//     >::Value>::Type = 0>
-//   void operator()(Tx l, Ty r)
-//   {
-//     UKismetSystemLibrary::PrintString(MapCursorPawn, "test3");
-//   }
-// };
 
 void AMapCursorPawn::HandleSelectingQuery(FIntPoint queryPt) {
   auto foundUnitOpt = UseState(interactionContextLens
@@ -134,8 +89,6 @@ void AMapCursorPawn::HandleSelectingQuery(FIntPoint queryPt) {
                      | map_opt(lager::lenses::attr(&FSelectingUnitContext::unitUnderCursor))
                      | or_default)
                    .make().get();
-  
-  
 
   if (!foundUnitOpt.IsSet())
     return;

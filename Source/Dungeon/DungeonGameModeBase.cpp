@@ -41,42 +41,6 @@ ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectIniti
 	UnitTable->RowStruct = FDungeonLogicUnit::StaticStruct();
 }
 
-template <typename InnerReducer,
-          typename WrappedModel,
-          typename WrappedAction>
-auto update_history(InnerReducer&& innerReducer,
-                    FHistoryModel<WrappedModel> m,
-                    THistoryAction<WrappedAction> a)
--> FHistoryModel<WrappedModel>
-{
-	return Visit(lager::visitor{
-		             [&](undo_action a)
-		             {
-			             m.stateStack.Pop();
-			             return m;
-			             // return update_history(r, m, goto_action{m.position - 1});
-		             },
-		             // [&] (redo_action a) {
-		             //     return update_history(r, m, goto_action{m.position + 1});
-		             // },
-		             // [&] (goto_action a) {
-		             //     if (a.position >= 0 && a.position < m.history.size())
-		             //         m.position = a.position;
-		             //     return m;
-		             // },
-		             [&](WrappedAction action)
-		             {
-			             // return innerReducer(m, action);
-			             auto updatedModel = innerReducer(m, action);
-			             if (&updatedModel != &(m.stateStack.Top()))
-			             {
-				             m.stateStack.Push(updatedModel);
-			             }
-			             return m;
-		             },
-	             }, a);
-}
-
 #define TRANSITION_EDGE_FROM_TO(TFrom, TTo) \
   TTo operator()(TFrom& from) \
   {\
@@ -225,25 +189,6 @@ auto WorldStateReducer =
 			             return Model;
 		             },
 	             }, worldAction);
-};
-
-auto with_history = [](auto next)
-{
-	return [next](
-		auto action,
-		auto&& model,
-		auto&& reducer,
-		auto&& loop,
-		auto&& deps,
-		auto&& tags)
-	{
-		return next(action,
-		            model,
-		            [reducer](auto m, auto a) { return update_history(reducer, m, a); },
-		            LAGER_FWD(loop),
-		            LAGER_FWD(deps),
-		            LAGER_FWD(tags));
-	};
 };
 
 void ADungeonGameModeBase::BeginPlay()
@@ -406,19 +351,6 @@ void ADungeonGameModeBase::BeginPlay()
           			]
           		]
 	);
-
-	baseState = MakeShared<FSelectingGameState>(*this);
-	baseState->Enter();
-
-	// interactionReader = store->zoom(interactionContextLens).make();
-	// interactionReader.bind(TPreviousHookFunctor<TInteractionContext>(store->get().InteractionContext,
-	//                                       [this](auto&& previous, auto&& next)
-	//                                       {
-	// 	                                      Visit(FContextHandler(this),
-	// 	                                            Forward<decltype(previous)>(previous),
-	// 	                                            Forward<decltype(next)>(next));
-	// 	                                      return val;
-	//                                       }));
 }
 
 void ADungeonGameModeBase::GoBackOnInputState()
@@ -496,7 +428,6 @@ void ADungeonGameModeBase::Tick(float deltaTime)
 
 void ADungeonGameModeBase::Dispatch(TAction&& unionAction)
 {
-	// store->dispatch(TStoreAction(TInPlaceType<TAction>{}, unionAction));
 	store->dispatch(unionAction);
 }
 
