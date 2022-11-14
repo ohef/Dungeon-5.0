@@ -14,6 +14,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "lager/reader.hpp"
 #include "Logic/DungeonGameState.h"
+#include "Utility/StoreConnectedClass.hpp"
 #include "MapCursorPawn.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCursorEvent, FIntPoint);
@@ -25,14 +26,8 @@ struct ZoomLevelNode
   ZoomLevelNode* NextNode;
 };
 
-template <typename T, typename ...TArgs>
-struct TIsInTypeUnion
-{
-  enum { Value = TOr<TIsSame<T, TArgs>...>::Value };
-};
-
 UCLASS()
-class AMapCursorPawn : public APawn
+class AMapCursorPawn : public APawn, public FStoreConnectedClass<AMapCursorPawn, TAction>
 {
   GENERATED_BODY()
 
@@ -52,9 +47,11 @@ protected:
   ZoomLevelNode* currentZoom;
   
 public:
+  void HandleSelectingQuery(FIntPoint queryPt);
   void CycleZoom();
   
   lager::reader<FDungeonWorldState> reader;
+  lager::reader<TInteractionContext> interactionContextReader;
 
   UFUNCTION(BlueprintCallable)
   virtual void Tick(float DeltaTime) override;

@@ -26,8 +26,8 @@ public:
   
   int id;
   // lager::reader<FDungeonLogicUnit> reader;
-  using readerVal_t = std::tuple<FDungeonLogicUnit, FIntPoint>;
-  lager::reader<readerVal_t> reader;
+  using FReaderType = std::tuple<FDungeonLogicUnit, FIntPoint>;
+  lager::reader<FReaderType> reader;
   void hookIntoStore();
   
   UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")

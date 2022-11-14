@@ -12,8 +12,8 @@
 #include "Components/DrawFrustumComponent.h"
 #include "Dungeon/DungeonGameModeBase.h"
 #include "Dungeon/Lenses/model.hpp"
-#include "Dungeon/Lenses/SimpleCastTo.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Utility/ContextSwitchVisitor.hpp"
 
 AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -58,16 +58,123 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
   previousZoom = storedZoomLevels.GetData()->ZoomLevel;
 }
 
+STRUCT_CONTEXT_SWITCH_VISITOR(FContextHandlerr)
+{
+	STRUCT_CONTEXT_SWITCH_VISITOR_BODY(FContextHandlerr)
+
+  AMapCursorPawn* MapCursorPawn;
+  FDelegateHandle QueryDelegate;
+  bool bound = false;
+
+  FContextHandlerr(AMapCursorPawn* MapCursorPawn)
+    : MapCursorPawn(MapCursorPawn), QueryDelegate(FDelegateHandle())
+  {
+  }
+
+	template <class Tx>
+	void transition(Tx previouss, FSelectingUnitContext nextt)
+	{
+    UKismetSystemLibrary::PrintString(MapCursorPawn, "Entering and binding delegate");
+	  // QueryDelegate = MapCursorPawn->QueryInput.AddRaw(MapCursorPawn, &AMapCursorPawn::HandleSelectingQuery);
+    QueryDelegate = MapCursorPawn->QueryInput.AddUObject(MapCursorPawn, &AMapCursorPawn::HandleSelectingQuery);
+    // bound = true;
+	}
+	
+	template <class Tx>
+	void transition(FSelectingUnitContext previouss, Tx nextt)
+	{
+    UKismetSystemLibrary::PrintString(MapCursorPawn, "Entering and unbinding delegate");
+    // if(bound)
+    // if(QueryDelegate.IsValid())
+    // {
+      // MapCursorPawn->QueryInput.Remove(QueryDelegate);
+      MapCursorPawn->QueryInput.RemoveAll(MapCursorPawn);
+      // bound = false;
+    // }
+	}
+};
+
+// struct FContextHandlerNew
+// {
+//   AMapCursorPawn* MapCursorPawn;
+//   
+//   template <typename Tx, TEnableIf<TNot<TIsSame<Tx, FSelectingUnitContext>>::Value>::Type = 0>
+//   void operator()(Tx l, FSelectingUnitContext r)
+//   {
+//     UKismetSystemLibrary::PrintString(MapCursorPawn, "test");
+//   }
+//
+//   template <typename Tx, TEnableIf<TNot<TIsSame<Tx, FSelectingUnitContext>>::Value>::Type = 0>
+//   void operator()(FSelectingUnitContext l, Tx r)
+//   {
+//     UKismetSystemLibrary::PrintString(MapCursorPawn, "test2");
+//   }
+//   
+//   template<typename Tx>
+//   void operator()(Tx l, Tx r)
+//   {
+//     UKismetSystemLibrary::PrintString(MapCursorPawn, "test3");
+//   }
+//   
+//   template<typename Tx, typename Ty, TEnableIf<TNot<
+//     TOr<
+//       TIsSame<typename TDecay<Tx>::Type, FSelectingUnitContext>,
+//       TIsSame<typename TDecay<Ty>::Type, FSelectingUnitContext>
+//       >
+//     >::Value>::Type = 0>
+//   void operator()(Tx l, Ty r)
+//   {
+//     UKismetSystemLibrary::PrintString(MapCursorPawn, "test3");
+//   }
+// };
+
+void AMapCursorPawn::HandleSelectingQuery(FIntPoint queryPt) {
+  auto foundUnitOpt = UseState(interactionContextLens
+                     | unreal_alternative_pipeline_t<FSelectingUnitContext>()
+                     | map_opt(lager::lenses::attr(&FSelectingUnitContext::unitUnderCursor))
+                     | or_default)
+                   .make().get();
+  
+  
+
+  if (!foundUnitOpt.IsSet())
+    return;
+
+  auto foundUnitId = foundUnitOpt.GetValue() ;
+  auto isFinished = !UseViewState(isUnitFinishedLens2(foundUnitId)).IsSet();
+  
+  auto& TurnState = UseViewState(attr(&FDungeonWorldState::TurnState));
+  auto DungeonLogicUnit = UseViewState(unitDataLens(foundUnitId) | ignoreOptional);
+  
+  auto isOnTeam = TurnState.teamId == DungeonLogicUnit.teamId ;
+  if (isFinished && isOnTeam)
+  {
+    StoreDispatch(TAction(TInPlaceType<FChangeState>{}, TInteractionContext(TInPlaceType<FUnitMenu>{}, foundUnitId)));
+  }
+}
+
+
 void AMapCursorPawn::BeginPlay()
 {
   Super::BeginPlay();
-  reader = lager::view(worldStoreLens, GetWorld())->zoom(SimpleCastTo<FDungeonWorldState>).make();
-  reader.bind([&](FDungeonWorldState model)
+
+  interactionContextReader = UseState(interactionContextLens).make();
+  interactionContextReader.bind(TPreviousHookFunctor<TInteractionContext>(interactionContextReader.get(),
+  	                                      [this](auto&& previous, auto&& next)
+  	                                      {
+  		                                      Visit(FContextHandlerr(this),
+  		                                            Forward<decltype(previous)>(previous),
+  		                                            Forward<decltype(next)>(next));
+  		                                      return next;
+  	                                      }));
+  
+  reader = UseState(SimpleCastTo<FDungeonWorldState>).make();
+  reader.bind([&](const FDungeonWorldState& model)
   {
     Visit(lager::visitor{
             [&](auto context)
             {
-              if constexpr (TIsInTypeUnion<decltype(context), FMainMenu, FUnitMenu, FUnitInteraction>::Value)
+              if constexpr (isInGuiControlledState<decltype(context)>())
               {
                 MovementComponent->SetActive(false);
               }
@@ -100,6 +207,8 @@ void AMapCursorPawn::Tick(float DeltaTime)
   if (quantized == CurrentPosition)
     return;
 
+  StoreDispatch(TAction(TInPlaceType<FCursorPositionUpdated>{}, quantized));
+  
   CursorEvent.Broadcast(quantized);
   DynamicCursorEvent.Broadcast(quantized);
   CurrentPosition = quantized;

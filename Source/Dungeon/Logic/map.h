@@ -26,14 +26,4 @@ struct FDungeonLogicMap
   TMap<FIntPoint, int> tileAssignment;
   UPROPERTY(Category=Dungeon, VisibleAnywhere)
   TMap<FIntPoint, int> unitAssignment;
-
-  // boost::bimap<FIntPoint, int> tileAssignmentt;
 };
-
-// auto wew = []()
-// {
-//   boost::bimap<FIntPoint, int> tileAssignmentt;
-//   auto wow = FDungeonLogicMap();
-//   wow.tileAssignmentt.find(FIntPoint{1, 2});
-//   auto wowthatscring = wow.tileAssignmentt.right[1];
-// };

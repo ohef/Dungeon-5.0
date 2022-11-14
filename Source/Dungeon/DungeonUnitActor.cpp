@@ -3,6 +3,7 @@
 
 #include "DungeonUnitActor.h"
 
+#include "DungeonConstants.h"
 #include "lager/lenses/tuple.hpp"
 #include "Lenses/model.hpp"
 
@@ -22,10 +23,10 @@ void ADungeonUnitActor::BeginPlay()
 void ADungeonUnitActor::hookIntoStore()
 {
   reader = lager::view(worldStoreLens, GetWorld())
-           ->zoom(lager::lenses::fan(thisUnitLens(id), unitAtPoint(id)))
+           ->zoom(lager::lenses::fan(thisUnitLens(id), unitIdToPosition(id)))
            .make();
 
-  reader.bind([&](readerVal_t ReaderVal)
+  reader.bind([&](const FReaderType& ReaderVal)
   {
     const FDungeonLogicUnit& DungeonLogicUnit = lager::view(first, ReaderVal);
     const FIntPoint& IntPoint = lager::view(second, ReaderVal);

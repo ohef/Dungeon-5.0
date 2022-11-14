@@ -4,6 +4,7 @@
 
 
 #include "CoreMinimal.h"
+#include "TurnNotifierWidget.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/Button.h"
 #include "Components/NativeWidgetHost.h"
@@ -13,6 +14,8 @@
 #include "lager/reader.hpp"
 #include "Logic/DungeonGameState.h"
 #include "Menus/MainMapMenu.h"
+#include "Utility/HookFunctor.hpp"
+#include "Utility/StoreConnectedClass.hpp"
 
 #include "DungeonMainWidget.generated.h"
 
@@ -20,7 +23,7 @@
  * 
  */
 UCLASS(Abstract)
-class DUNGEON_API UDungeonMainWidget : public UUserWidget
+class DUNGEON_API UDungeonMainWidget : public UUserWidget, public FStoreConnectedClass<UDungeonMainWidget, TAction>
 {
 public:
   UDungeonMainWidget(const FObjectInitializer& ObjectInitializer);
@@ -48,11 +51,14 @@ public:
   TWeakObjectPtr<UNativeWidgetHost> UnitDisplay;
   UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
   TWeakObjectPtr<UMainMapMenu> MainMapMenu;
-  
+  UPROPERTY(meta=(BindWidget), EditAnywhere, BlueprintReadWrite)
+  TWeakObjectPtr<UTurnNotifierWidget> TurnNotifierWidget;
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   ESlateVisibility MapMenuVisibility;
   
-  lager::reader<TOptional<FMainMenu>> interactionCursor;
+  UFUNCTION()
+  void OnEndTurnClicked();
   
-  void React(TOptional<FMainMenu> visible);
+  lager::reader<TInteractionContext> contextCursor;
+  lager::reader<int> turnStateReader;
 };

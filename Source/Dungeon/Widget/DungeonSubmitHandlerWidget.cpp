@@ -29,7 +29,7 @@ void UDungeonSubmitHandlerWidget::NativeOnInitialized()
   Super::NativeOnInitialized();
   TArray<FIntervalPriority> IntervalPriorities = singleSubmitHandler->handlers;
   float TimelineLength = singleSubmitHandler->totalLength;
-  
+
   FVector2D circleSize = FVector2D{500, 500};
   for (auto interval : IntervalPriorities)
   {

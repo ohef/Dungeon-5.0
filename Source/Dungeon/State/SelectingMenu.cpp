@@ -1,6 +1,7 @@
 #include "SelectingMenu.h"
 
 #include "AttackState.h"
+#include "DungeonConstants.h"
 #include "GraphAStar.h"
 #include "SelectingTargetGameState.h"
 #include "Algo/Accumulate.h"
@@ -83,8 +84,8 @@ FReply FSelectingMenu::OnAttackButtonClick()
       return output;
     }(initiatingUnit->attackRange, initiatingUnit->Movement, {{-1, -1}}, capturedCursorPosition, pt);
 
-    gameMode.MovementVisualization->Clear();
-    gameMode.MovementVisualization->ShowTiles(result);
+    // gameMode.MovementVisualization->Clear();
+    // gameMode.MovementVisualization->ShowTiles(result);
 
     auto singleSubmitHandler =
       CastChecked<USingleSubmitHandler>(
@@ -106,6 +107,7 @@ FReply FSelectingMenu::OnAttackButtonClick()
 
         gameMode.Dispatch(TAction(TInPlaceType<FCombatAction>{}, sourceID, target, damage, pt));
       });
+      
     gameMode.FinishAddComponent(singleSubmitHandler, false, FTransform());
     gameMode.InputStateTransition(new FAttackState(gameMode, singleSubmitHandler));
 

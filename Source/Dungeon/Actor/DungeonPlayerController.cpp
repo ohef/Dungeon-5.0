@@ -3,6 +3,7 @@
 
 #include "Actor/DungeonPlayerController.h"
 
+#include "DungeonConstants.h"
 #include "Dungeon/DungeonGameModeBase.h"
 
 ADungeonPlayerController::ADungeonPlayerController(const FObjectInitializer& ObjectInitializer): Super(
@@ -23,10 +24,9 @@ void ADungeonPlayerController::RaiseQuery()
 
 void ADungeonPlayerController::GoBackInteraction()
 {
-  ADungeonGameModeBase* DungeonGameModeBase = GetWorld()->GetAuthGameMode<ADungeonGameModeBase>();
-  auto historyAction = THistoryAction<TAction>(TInPlaceType<TAction>{});
-  historyAction.Set<TAction>(TAction(TInPlaceType<FBackAction>{}));
-  DungeonGameModeBase->store->dispatch(historyAction);
+  GetWorld()
+  ->GetAuthGameMode<ADungeonGameModeBase>()
+  ->Dispatch(TAction(TInPlaceType<FBackAction>{}));
 }
 
 void ADungeonPlayerController::SetupInputComponent()

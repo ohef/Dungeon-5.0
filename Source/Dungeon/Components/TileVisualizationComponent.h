@@ -2,10 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "DungeonConstants.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Logic/DungeonGameState.h"
+#include "Dungeon/DungeonGameModeBase.h"
 
 #include "TileVisualizationComponent.generated.h"
 
-UCLASS(meta = (BlueprintSpawnableComponent), Blueprintable)
+UCLASS(Blueprintable)
 class DUNGEON_API UTileVisualizationComponent : public UInstancedStaticMeshComponent
 {
   GENERATED_BODY()

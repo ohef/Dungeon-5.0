@@ -9,7 +9,7 @@ class ADungeonGameModeBase;
 struct FSelectingGameState : public FState
 {
   ADungeonGameModeBase& gameMode;
-  FDungeonLogicUnit* foundUnit;
+  TOptional<FDungeonLogicUnit> foundUnit;
   TMap<ETargetsAvailableId, TSet<FIntPoint>> targets;
   TFunction<void()> unregisterDelegates;
 

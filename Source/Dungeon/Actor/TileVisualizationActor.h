@@ -8,7 +8,7 @@
 #include "TileVisualizationActor.generated.h"
 
 UCLASS()
-class DUNGEON_API ATileVisualizationActor : public AActor
+class DUNGEON_API ATileVisualizationActor : public AActor, public FStoreConnectedClass<ATileVisualizationActor, TAction>
 {
   GENERATED_BODY()
 
@@ -20,6 +20,8 @@ public:
   UTileVisualizationComponent* TileVisualizationComponent;
   UPROPERTY(EditAnywhere,BlueprintReadWrite)
   UTileVisualizationComponent* MovementVisualizationComponent;
+
+  lager::reader<TInteractionContext> contextCursor;
 
 protected:
   // Called when the game starts or when spawned

@@ -7,11 +7,11 @@ struct FSelectingMenu : public FState, TSharedFromThis<FSelectingMenu>
 {
   ADungeonGameModeBase& gameMode;
   FIntPoint capturedCursorPosition;
-  FDungeonLogicUnit* initiatingUnit;
+  TOptional<FDungeonLogicUnit> initiatingUnit;
   TMap<ETargetsAvailableId, TSet<FIntPoint>> targets;
 
   FSelectingMenu(ADungeonGameModeBase& GameMode, const FIntPoint& CapturedCursorPosition,
-                 FDungeonLogicUnit* InitiatingUnit, const TMap<ETargetsAvailableId, TSet<FIntPoint>>& Targets)
+                 TOptional<FDungeonLogicUnit> InitiatingUnit, const TMap<ETargetsAvailableId, TSet<FIntPoint>>& Targets)
     : gameMode(GameMode),
       capturedCursorPosition(CapturedCursorPosition),
       initiatingUnit(InitiatingUnit),

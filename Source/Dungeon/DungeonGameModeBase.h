@@ -7,15 +7,10 @@
 
 #include "CoreMinimal.h"
 #include "TargetsAvailableId.h"
-#include "Actions/Action.h"
 #include "Actions/CombatAction.h"
-#include "Actions/EndTurnAction.h"
-#include "Actions/MoveAction.h"
 #include "Actor/MapCursorPawn.h"
-#include "Actor/TileVisualizationActor.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
-#include "Components/TileVisualizationComponent.h"
 #include "Curves/CurveVector.h"
 #include "Engine/DataTable.h"
 #include "GameFramework/GameModeBase.h"
@@ -27,6 +22,7 @@
 
 #include "DungeonGameModeBase.generated.h"
 
+class UTileVisualizationComponent;
 struct FSelectingGameState;
 struct ProgramState;
 USTRUCT(BlueprintType)
@@ -64,8 +60,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAttackDelegate, FAttackResults cons
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCombatActionEvent, FCombatAction, action);
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FUnitUpdate, FDungeonLogicUnit, unit);
-
 struct FCoerceToFText
 {
   template <typename T>
@@ -83,7 +77,7 @@ struct FCoerceToFText
 #define CREATE_GETTER_FOR_PROPERTY(managedPointer, fieldName) \
 FText Get##managedPointer####fieldName() const \
 { \
-  return managedPointer == nullptr ? FText() : FCoerceToFText::Value(managedPointer->fieldName); \
+  return managedPointer.IsValid() ? FCoerceToFText::Value(managedPointer->fieldName) : FText(); \
 }
 
 template <typename TModel>
@@ -99,7 +93,7 @@ struct FHistoryModel
   {
     return stateStack.Top();
   }
-
+  
   operator const TModel&() const &
   {
     return stateStack.Top();
@@ -118,7 +112,7 @@ template <typename TTAction>
 using THistoryAction = TVariant<TTAction, undo_action>;
 
 UCLASS()
-class DUNGEON_API ADungeonGameModeBase : public AGameModeBase, public TSharedFromThis<ADungeonGameModeBase>
+class DUNGEON_API ADungeonGameModeBase : public AGameModeBase //, public TSharedFromThis<ADungeonGameModeBase>
 {
   GENERATED_BODY()
 
@@ -127,8 +121,7 @@ class DUNGEON_API ADungeonGameModeBase : public AGameModeBase, public TSharedFro
 public:
   virtual void BeginPlay() override;
   virtual void Tick(float time) override;
-  void UpdateUnitActor(const FDungeonLogicUnit& unit);
-  void Dispatch(TAction unionAction);
+  void Dispatch(TAction&& unionAction);
 
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Id)
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Movement)
@@ -153,22 +146,22 @@ public:
   FCombatActionEvent CombatActionEvent;
   UPROPERTY()
   UDungeonMainWidget* MainWidget;
+  
   UPROPERTY()
   UTileVisualizationComponent* TileVisualizationComponent;
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   UTileVisualizationComponent* MovementVisualization;
 
-  FDungeonLogicUnit* LastSeenUnitUnderCursor;
+  TUniquePtr<FDungeonLogicUnit> LastSeenUnitUnderCursor;
   FTextBlockStyle style;
   TSharedPtr<FState> baseState;
   TArray<TSharedPtr<FState>> stateStack;
   TSubclassOf<UDungeonMainWidget> MainWidgetClass;
   TQueue<TUniquePtr<FTimeline>> AnimationQueue;
-  TQueue<TTuple<TUniquePtr<FAction>, TFunction<void()>>> reactEventQueue;
-
-  using TStoreAction = THistoryAction<TAction>;
-  // TUniquePtr<lager::store<TDungeonAction, FDungeonWorldState>> store;
-  TUniquePtr<lager::store<THistoryAction<TAction>, FHistoryModel<FDungeonWorldState>>> store;
+  // using TStoreAction = THistoryAction<TAction>;
+  // using TModelType = FHistoryModel<FDungeonWorldState>;
+  TUniquePtr<TDungeonStore> store;
+  lager::reader<TInteractionContext> interactionReader;
 
   void GoBackOnInputState();
 
@@ -188,12 +181,7 @@ public:
 
   void CommitAndGotoBaseState();
 
-  void React();
-
   TOptional<FDungeonLogicUnit> FindUnit(FIntPoint pt);
-
-  UFUNCTION()
-  void ApplyAction(FCombatAction action);
 
   void RefocusMenu();
 
