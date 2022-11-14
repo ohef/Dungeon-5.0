@@ -249,14 +249,6 @@ void ADungeonGameModeBase::BeginPlay()
 		}
 	}
 
-	// store = MakeUnique<lager::store<THistoryAction<TAction>, FHistoryModel<FDungeonWorldState>>>(
-	//   lager::make_store<THistoryAction<TAction>>(
-	//     FHistoryModel<FDungeonWorldState>(FDungeonWorldState(this->Game)),
-	//     lager::with_manual_event_loop{},
-	//     lager::with_reducer(WorldStateReducer),
-	//     with_history
-	//   ));
-
 	store = MakeUnique<lager::store<TStoreAction, TModelType>>(
 		lager::make_store<TStoreAction>(
 			TModelType(this->Game),
