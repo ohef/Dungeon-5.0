@@ -7,7 +7,7 @@
 
 #include "map.h"
 #include "TargetsAvailableId.h"
-#include "Dungeon/DungeonUnitActor.h"
+#include "Actions/InteractAction.hpp"
 #include "Dungeon/Actions/CombatAction.h"
 #include "Dungeon/Actions/EndTurnAction.h"
 #include "Dungeon/Actions/MoveAction.h"
@@ -113,8 +113,27 @@ struct FChangeState
   TInteractionContext newState;
 };
 
-using TAction = TVariant<
+using TStepAction = TVariant<
   FEmptyVariantState,
+  FMoveAction,
+  FCombatAction
+>;
+
+struct FInteractAction
+{
+	TStepAction mainAction;
+	TArray<TInteractionContext> interactions;
+};
+
+struct FTargetSubmission
+{
+  FIntPoint target;
+};
+
+using TDungeonAction = TVariant<
+  FEmptyVariantState,
+  FInteractAction,
+  FTargetSubmission,
   FChangeState,
   FCursorPositionUpdated,
   FMoveAction,
@@ -131,6 +150,8 @@ struct FDungeonWorldState
 
   FTurnState TurnState;
 
+  TStepAction WaitingForResolution;
+  TArray<TInteractionContext> InteractionsToResolve;
   TInteractionContext InteractionContext;
   
   FIntPoint CursorPosition;

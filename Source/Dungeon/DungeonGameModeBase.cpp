@@ -2,31 +2,28 @@
 
 #include "DungeonGameModeBase.h"
 
-#include <Logic/DungeonGameState.h>
-
+#include "Logic/DungeonGameState.h"
+#include "SingleSubmitHandler.h"
 #include "Actions/EndTurnAction.h"
 #include "Actor/DungeonPlayerController.h"
 #include "Actor/MapCursorPawn.h"
+#include "Actor/TileVisualizationActor.h"
+#include "DungeonUnitActor.h"
+#include "Algo/Copy.h"
 #include "Algo/FindLast.h"
 #include "Blueprint/WidgetTree.h"
 #include "Engine/DataTable.h"
 #include "GameFramework/GameStateBase.h"
-#include "Kismet/KismetSystemLibrary.h"
-#include "Lenses/model.hpp"
-#include "Logic/SimpleTileGraph.h"
-#include "Serialization/Csv/CsvParser.h"
-#include "SingleSubmitHandler.h"
-#include "Actor/TileVisualizationActor.h"
-#include "Algo/Copy.h"
-#include "State/SelectingGameState.h"
 #include "immer/map.hpp"
-#include "lager/event_loop/manual.hpp"
-#include "lager/lenses/tuple.hpp"
+#include "Kismet/KismetSystemLibrary.h"
 #include "lager/store.hpp"
 #include "lager/util.hpp"
+#include "lager/event_loop/manual.hpp"
+#include "Lenses/model.hpp"
+#include "Logic/SimpleTileGraph.h"
 #include "Logic/util.h"
-#include "Utility/ContextSwitchVisitor.hpp"
-#include "Utility/HookFunctor.hpp"
+#include "Serialization/Csv/CsvParser.h"
+#include "State/SelectingGameState.h"
 #include "Utility/VariantVisitor.hpp"
 
 ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectInitializer) :
@@ -66,14 +63,14 @@ struct FCursorPositionUpdatedHandler : public TVariantVisitor<void, TInteraction
 		currentContext.interactionTiles.Find(ETargetsAvailableId::move)->Empty();
 		currentContext.interactionTiles.Find(ETargetsAvailableId::attack)->Empty();
 
-		if(!currentContext.unitUnderCursor.IsSet())
+		if (!currentContext.unitUnderCursor.IsSet())
 			return;
 
 		int unitIdUnderCursor = *currentContext.unitUnderCursor;
-		auto foundUnitLogic = *lager::view( unitDataLens(unitIdUnderCursor), Model);
+		auto foundUnitLogic = *lager::view(unitDataLens(unitIdUnderCursor), Model);
 
 		TSet<FIntPoint> points;
-		
+
 		bool unitCanTakeAction = !lager::view(isUnitFinishedLens2(unitIdUnderCursor), Model).IsSet();
 		int interactionDistance = foundUnitLogic.Movement + foundUnitLogic.attackRange;
 
@@ -121,14 +118,14 @@ struct FBackTransitions
 };
 
 auto WorldStateReducer =
-	[](FDungeonWorldState Model, TAction worldAction)
+	[](FDungeonWorldState Model, TDungeonAction worldAction)
 {
 	return Visit(lager::visitor
 	             {
 		             [&](FBackAction)
 		             {
 			             return Visit(lager::visitor{
-				                          [&](auto all)
+				                          [&](auto& all)
 				                          {
 					                          auto Value = FBackTransitions{}(all);
 					                          Model.InteractionContext.Set<decltype(Value)>(Value);
@@ -136,10 +133,64 @@ auto WorldStateReducer =
 				                          },
 			                          }, Model.InteractionContext);
 		             },
+		             [&](FTargetSubmission actionTarget)
+		             {
+						// UE_LOG(LogTemp, Fatal, TEXT("The Actor's name is "));
+						
+			             auto foundUnitOpt = lager::view(interactionContextLens
+			                                             | unreal_alternative_pipeline_t<FSelectingUnitContext>()
+			                                             | map_opt(lager::lenses::attr(
+				                                             &FSelectingUnitContext::unitUnderCursor))
+			                                             | or_default, Model);
+
+			             if (!foundUnitOpt.IsSet())
+				             return Model;
+
+			             auto shouldAbort = Visit(DungeonVisitor{
+				                                      [&](FMoveAction&&)
+				                                      {
+					                                      return !lager::view(
+						                                      getUnitAtPointLens(actionTarget.target), Model).IsSet();
+				                                      },
+				                                      [](auto&&) { return false; }
+			                                      }, lager::view(
+				                                      lager::lenses::attr(&FDungeonWorldState::WaitingForResolution),
+				                                      Model));
+
+			             //Abort if this returns true
+			             if (shouldAbort)
+				             return Model;
+
+			             Visit(DungeonVisitor{
+				                   [&](FMoveAction&& action)
+				                   {
+					                   action.Destination = actionTarget.target;
+					                   Model.InteractionsToResolve.Pop();
+				                   },
+				                   [](auto&&)
+				                   {
+				                   }
+			                   }, Model.WaitingForResolution);
+
+			             return Model;
+		             },
+		             [&](FInteractAction action)
+		             {
+			             Model.InteractionsToResolve = action.interactions;
+			             Model.InteractionContext = action.interactions.Top();
+			             Model.WaitingForResolution = action.mainAction;
+			             return Model;
+		             },
+		             [&](FWaitAction action)
+		             {
+			             Model.TurnState.unitsFinished.Add(action.InitiatorId);
+			             Model.InteractionContext.Set<FSelectingUnitContext>({});
+			             return Model;
+		             },
 		             [&](FChangeState action)
 		             {
-		             	Model.InteractionContext = action.newState;
-		             	return Model;
+			             Model.InteractionContext = action.newState;
+			             return Model;
 		             },
 		             [&](FEndTurnAction action)
 		             {
@@ -185,7 +236,7 @@ auto WorldStateReducer =
 					             }
 				             }(action);
 			             }
-		             	
+
 			             return Model;
 		             },
 	             }, worldAction);
@@ -320,28 +371,29 @@ void ADungeonGameModeBase::BeginPlay()
 		+ styleSetter("Movement", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorMovement)
 		+ styleSetter("Turn ID", &ADungeonGameModeBase::GetCurrentTurnId)
 		+ SVerticalBox::Slot().AutoHeight()[
-          			SNew(SHorizontalBox)
-          			+ SHorizontalBox::Slot()
-          			[
-          				SNew(STextBlock)
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			[
+				SNew(STextBlock)
                      .TextStyle(&style)
                      .Font(InAttribute)
                      .Text(FText::FromString("Context Interaction"))
-          			]
-          			+ SHorizontalBox::Slot()
-          			[
-          				SNew(STextBlock)
+			]
+			+ SHorizontalBox::Slot()
+			[
+				SNew(STextBlock)
                      .TextStyle(&style)
                      .Font(InAttribute)
-                     .Text_Lambda([&]()->auto
-                     {
-                     	return Visit([&](auto&& context)
-                     	{
-	                        return FText::FromString((TDecay<decltype(context)>::Type::StaticStruct()->GetName()));
-                     	},store->get().InteractionContext);
-                     })
-          			]
-          		]
+                     .Text_Lambda([&]()-> auto
+				                {
+					                return Visit([&](auto&& context)
+					                {
+						                return FText::FromString(
+							                (TDecay<decltype(context)>::Type::StaticStruct()->GetName()));
+					                }, store->get().InteractionContext);
+				                })
+			]
+		]
 	);
 }
 
@@ -418,7 +470,7 @@ void ADungeonGameModeBase::Tick(float deltaTime)
 	(*this->AnimationQueue.Peek())->TickTimeline(deltaTime);
 }
 
-void ADungeonGameModeBase::Dispatch(TAction&& unionAction)
+void ADungeonGameModeBase::Dispatch(TDungeonAction&& unionAction)
 {
 	store->dispatch(unionAction);
 }

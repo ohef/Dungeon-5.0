@@ -34,12 +34,12 @@ struct TPreviousHookFunctor
   TReducerSignature<T> hook;
 
   TPreviousHookFunctor(T dependencyValue, TReducerSignature<T>&& hook)
-    : previousDependencyValue(dependencyValue), hook(hook)
+    : previousDependencyValue(dependencyValue), hook(Forward<TReducerSignature<T>>(hook) )
   {
   }
 
   void operator()(T nextValue)
   {
-    previousDependencyValue = hook(MoveTemp(previousDependencyValue), MoveTemp(nextValue));
+    previousDependencyValue = hook(Forward<T>(previousDependencyValue), Forward<T>(nextValue));
   }
 };

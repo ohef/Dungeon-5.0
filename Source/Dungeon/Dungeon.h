@@ -6,6 +6,8 @@
 #include "lager/store.hpp"
 #include "Logic/DungeonGameState.h"
 
+// DEFINE_LOG_CATEGORY(DungeonLog);
+
 struct FDungeonWorldState;
 struct FUnitInteraction;
 struct FUnitMenu;
@@ -25,6 +27,9 @@ constexpr bool isInGuiControlledState()
   return TIsInTypeUnion<T, FMainMenu, FUnitMenu, FUnitInteraction>::Value;
 }
 
-using TStoreAction = TAction;
+template <class... Ts>
+using DungeonVisitor = lager::visitor<Ts...>;
+
+using TStoreAction = TDungeonAction;
 using TModelType = FDungeonWorldState;
 using TDungeonStore = lager::store<TStoreAction, TModelType>;

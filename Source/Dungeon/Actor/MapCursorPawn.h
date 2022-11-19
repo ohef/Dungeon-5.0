@@ -27,7 +27,7 @@ struct ZoomLevelNode
 };
 
 UCLASS()
-class AMapCursorPawn : public APawn, public FStoreConnectedClass<AMapCursorPawn, TAction>
+class AMapCursorPawn : public APawn, public FStoreConnectedClass<AMapCursorPawn, TDungeonAction>
 {
   GENERATED_BODY()
 
@@ -47,6 +47,7 @@ protected:
   ZoomLevelNode* currentZoom;
   
 public:
+  void HandleSelectingTarget(FIntPoint queryPt);
   void HandleSelectingQuery(FIntPoint queryPt);
   void CycleZoom();
   

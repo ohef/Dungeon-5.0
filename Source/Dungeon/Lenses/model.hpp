@@ -1,7 +1,6 @@
 ﻿#pragma once
 
 #include "SimpleCastTo.hpp"
-#include "Dungeon/DungeonGameModeBase.h"
 #include "Dungeon/Utility/LagerIntegration.hpp"
 #include "lager/lenses/attr.hpp"
 #include "lager/lenses.hpp"

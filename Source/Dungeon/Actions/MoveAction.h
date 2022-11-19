@@ -11,5 +11,14 @@ struct FMoveAction : public FAction
       Destination(Destination)
   {
   }
+
+  FMoveAction(int InitiatorId)
+    : FMoveAction(InitiatorId, {0, 0})
+  {
+  }
+
+  FMoveAction() : FMoveAction(0) {
+  }
+  
 };
 

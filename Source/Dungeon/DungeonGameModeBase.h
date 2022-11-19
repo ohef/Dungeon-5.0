@@ -25,6 +25,7 @@
 class UTileVisualizationComponent;
 struct FSelectingGameState;
 struct ProgramState;
+
 USTRUCT(BlueprintType)
 struct FAbilityParams : public FTableRowBase
 {
@@ -80,37 +81,6 @@ FText Get##managedPointer####fieldName() const \
   return managedPointer.IsValid() ? FCoerceToFText::Value(managedPointer->fieldName) : FText(); \
 }
 
-template <typename TModel>
-struct FHistoryModel
-{
-  TArray<TModel> stateStack;
-
-  FHistoryModel(TModel&& model = {}) : stateStack({model})
-  {
-  }
-
-  operator TModel&() &
-  {
-    return stateStack.Top();
-  }
-  
-  operator const TModel&() const &
-  {
-    return stateStack.Top();
-  }
-};
-
-struct undo_action
-{
-};
-
-struct redo_action
-{
-};
-
-template <typename TTAction>
-using THistoryAction = TVariant<TTAction, undo_action>;
-
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase //, public TSharedFromThis<ADungeonGameModeBase>
 {
@@ -121,7 +91,7 @@ class DUNGEON_API ADungeonGameModeBase : public AGameModeBase //, public TShared
 public:
   virtual void BeginPlay() override;
   virtual void Tick(float time) override;
-  void Dispatch(TAction&& unionAction);
+  void Dispatch(TDungeonAction&& unionAction);
 
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Id)
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Movement)

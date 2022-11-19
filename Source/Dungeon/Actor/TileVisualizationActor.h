@@ -8,7 +8,7 @@
 #include "TileVisualizationActor.generated.h"
 
 UCLASS()
-class DUNGEON_API ATileVisualizationActor : public AActor, public FStoreConnectedClass<ATileVisualizationActor, TAction>
+class DUNGEON_API ATileVisualizationActor : public AActor, public FStoreConnectedClass<ATileVisualizationActor, TDungeonAction>
 {
   GENERATED_BODY()
 

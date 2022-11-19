@@ -105,7 +105,7 @@ FReply FSelectingMenu::OnAttackButtonClick()
         auto damage = initiator.damage - floor((0.05 * results[0].order));
         target.HitPoints -= damage;
 
-        gameMode.Dispatch(TAction(TInPlaceType<FCombatAction>{}, sourceID, target, damage, pt));
+        gameMode.Dispatch(TDungeonAction(TInPlaceType<FCombatAction>{}, sourceID, target, damage, pt));
       });
       
     gameMode.FinishAddComponent(singleSubmitHandler, false, FTransform());
@@ -121,7 +121,7 @@ FReply FSelectingMenu::OnAttackButtonClick()
 
 FReply FSelectingMenu::OnWaitButtonClick()
 {
-  gameMode.Dispatch(TAction(TInPlaceType<FWaitAction>{}, this->initiatingUnit->Id));
+  gameMode.Dispatch(TDungeonAction(TInPlaceType<FWaitAction>{}, this->initiatingUnit->Id));
   return FReply::Handled();
 }
 
@@ -134,7 +134,7 @@ FReply FSelectingMenu::OnMoveSelected()
   {
     if (gameMode.canUnitMoveToPointInRange(initiatingUnit->Id, target, TilesExtent))
     {
-      gameMode.Dispatch(TAction(TInPlaceType<FMoveAction>{}, initiatingUnit->Id, target));
+      gameMode.Dispatch(TDungeonAction(TInPlaceType<FMoveAction>{}, initiatingUnit->Id, target));
     }
   };
 

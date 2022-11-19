@@ -14,7 +14,6 @@
 #include "lager/reader.hpp"
 #include "Logic/DungeonGameState.h"
 #include "Menus/MainMapMenu.h"
-#include "Utility/HookFunctor.hpp"
 #include "Utility/StoreConnectedClass.hpp"
 
 #include "DungeonMainWidget.generated.h"
@@ -23,10 +22,18 @@
  * 
  */
 UCLASS(Abstract)
-class DUNGEON_API UDungeonMainWidget : public UUserWidget, public FStoreConnectedClass<UDungeonMainWidget, TAction>
+class DUNGEON_API UDungeonMainWidget : public UUserWidget, public FStoreConnectedClass<UDungeonMainWidget, TDungeonAction>
 {
 public:
   UDungeonMainWidget(const FObjectInitializer& ObjectInitializer);
+  
+  UFUNCTION()
+  void OnAttackClicked();
+  UFUNCTION()
+  void OnWaitClicked();
+  UFUNCTION()
+  void OnMoveClicked();
+  
   virtual bool Initialize() override;
 private:
   GENERATED_BODY()

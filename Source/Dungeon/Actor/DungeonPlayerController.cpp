@@ -26,7 +26,7 @@ void ADungeonPlayerController::GoBackInteraction()
 {
   GetWorld()
   ->GetAuthGameMode<ADungeonGameModeBase>()
-  ->Dispatch(TAction(TInPlaceType<FBackAction>{}));
+  ->Dispatch(TDungeonAction(TInPlaceType<FBackAction>{}));
 }
 
 void ADungeonPlayerController::SetupInputComponent()

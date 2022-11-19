@@ -4,6 +4,8 @@
 #include "DungeonUnitActor.h"
 
 #include "DungeonConstants.h"
+#include "DungeonGameModeBase.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "lager/lenses/tuple.hpp"
 #include "Lenses/model.hpp"
 
@@ -22,14 +24,17 @@ void ADungeonUnitActor::BeginPlay()
 
 void ADungeonUnitActor::hookIntoStore()
 {
-  reader = lager::view(worldStoreLens, GetWorld())
-           ->zoom(lager::lenses::fan(thisUnitLens(id), unitIdToPosition(id)))
-           .make();
+  reader = this->GetWorld()
+               ->template GetAuthGameMode<ADungeonGameModeBase>()
+               ->store
+               ->zoom(lager::lenses::fan(thisUnitLens(id), unitIdToPosition(id), isUnitFinishedLens2(id)))
+               .make();
 
-  reader.bind([&](const FReaderType& ReaderVal)
+  reader.bind([&](const auto& ReaderVal)
   {
-    const FDungeonLogicUnit& DungeonLogicUnit = lager::view(first, ReaderVal);
+    FDungeonLogicUnit DungeonLogicUnit = lager::view(first, ReaderVal);
     const FIntPoint& IntPoint = lager::view(second, ReaderVal);
+    DungeonLogicUnit.state = lager::view(element<2>, ReaderVal).IsSet() ? UnitState::ActionTaken : UnitState::Free;
 
     UKismetSystemLibrary::PrintString(this, DungeonLogicUnit.Name);
     UKismetSystemLibrary::PrintString(this, IntPoint.ToString());
