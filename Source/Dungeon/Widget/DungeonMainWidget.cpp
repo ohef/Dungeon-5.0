@@ -30,6 +30,7 @@ struct FDungeonWidgetContextHandler
 		else if constexpr (TIsSame<TTo, FUnitMenu>::Value)
 		{
 			dungeonWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Visible);
+			dungeonWidget->Move->SetFocus();
 		}
 		else if constexpr (TIsSame<TFrom, FMainMenu>::Value)
 		{
@@ -38,6 +39,7 @@ struct FDungeonWidgetContextHandler
 		else if constexpr (TIsSame<TTo, FMainMenu>::Value)
 		{
 			dungeonWidget->MainMapMenu->SetVisibility(ESlateVisibility::Visible);
+			dungeonWidget->MainMapMenu->Units->SetFocus();
 		}
 		else
 		{
@@ -49,6 +51,13 @@ struct FDungeonWidgetContextHandler
 		}
 	}
 };
+
+void UDungeonMainWidget::NativeOnFocusLost(const FFocusEvent& InFocusEvent)
+{
+	Super::NativeOnFocusLost(InFocusEvent);
+	UKismetSystemLibrary::PrintString(this,
+		"WOWOWOWWOWOWeuastnheoustneoanuheonathuesoanthueoastuhoaenst");
+}
 
 bool UDungeonMainWidget::Initialize()
 {
@@ -84,7 +93,11 @@ bool UDungeonMainWidget::Initialize()
 	return true;
 }
 
-auto GetUnitIdFromContext = interactionContextLens | unreal_alternative_pipeline<FUnitMenu> | map_opt(attr(&FUnitMenu::unitId)) | value_or(-1);
+auto GetUnitIdFromContext =
+	interactionContextLens
+	| unreal_alternative_pipeline<FUnitMenu>
+	| map_opt(attr(&FUnitMenu::unitId))
+	| value_or(-1);
 
 void UDungeonMainWidget::OnMoveClicked()
 {

@@ -33,7 +33,8 @@ public:
   void OnWaitClicked();
   UFUNCTION()
   void OnMoveClicked();
-  
+
+	virtual void NativeOnFocusLost( const FFocusEvent& InFocusEvent ) override;
   virtual bool Initialize() override;
 private:
   GENERATED_BODY()

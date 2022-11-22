@@ -151,8 +151,6 @@ public:
 
   void CommitAndGotoBaseState();
 
-  TOptional<FDungeonLogicUnit> FindUnit(FIntPoint pt);
-
   void RefocusMenu();
 
   template <typename T>
@@ -190,6 +188,4 @@ public:
   }
 
   AMapCursorPawn* GetMapCursorPawn();
-
-  bool canUnitMoveToPointInRange(int unitId, FIntPoint destination, const TSet<FIntPoint>& movementExtent);
 };

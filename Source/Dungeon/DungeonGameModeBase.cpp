@@ -46,7 +46,7 @@ ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectIniti
     return TTo();\
   }
 
-auto GetInteractionFields(int unitIdUnderCursor, FDungeonWorldState Model) -> TTuple<TSet<FIntPoint>, TSet<FIntPoint>>
+auto GetInteractionFields(FDungeonWorldState Model, int unitIdUnderCursor) -> TTuple<TSet<FIntPoint>, TSet<FIntPoint>>
 {
 	auto foundUnitLogic = *lager::view(unitDataLens(unitIdUnderCursor), Model);
 	auto unitsPosition = lager::view(unitIdToPosition(unitIdUnderCursor), Model);
@@ -110,8 +110,7 @@ struct FCursorPositionUpdatedHandler : public TVariantVisitor<void, TInteraction
 		if (!currentContext.unitUnderCursor.IsSet())
 			return;
 
-		auto [movementTiles, attackTiles] =
-			GetInteractionFields(*currentContext.unitUnderCursor, Model);
+		auto [movementTiles, attackTiles] = GetInteractionFields(Model, *currentContext.unitUnderCursor);
 
 		currentContext.interactionTiles.Add(ETargetsAvailableId::move, movementTiles);
 		currentContext.interactionTiles.Add(ETargetsAvailableId::attack, movementTiles.Union(attackTiles));
@@ -136,7 +135,7 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 
 	return Visit(TDungeonVisitor
 	             {
-		             [&](FBackAction) -> FDungeonReducerResult
+		             [&](FBackAction&) -> FDungeonReducerResult
 		             {
 			             return Visit(lager::visitor{
 				                          [&](auto& all) -> FDungeonReducerResult
@@ -147,7 +146,7 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 				                          },
 			                          }, Model.InteractionContext);
 		             },
-		             [&](FTargetSubmission actionTarget) -> FDungeonReducerResult
+		             [&](FTargetSubmission& actionTarget) -> FDungeonReducerResult
 		             {
 			             return Visit(TDungeonVisitor{
 				             [&](FSelectingUnitAbilityTarget&) -> FDungeonReducerResult
@@ -158,7 +157,7 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 							                          bool bIsUnitThere = DungeonView(
 								                          getUnitAtPointLens(actionTarget.target)).IsSet();
 							                          auto [movementTiles, attackTiles] = GetInteractionFields(
-								                          waitingAction.InitiatorId, Model);
+								                          Model, waitingAction.InitiatorId);
 							                          if (bIsUnitThere || !movementTiles.Contains(actionTarget.target))
 								                          return {Model, lager::noop};
 
@@ -182,7 +181,7 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 							                          TOptional<FDungeonLogicUnit> targetedUnit = DungeonView(unitDataLens(targetedUnitId));
 
 							                          auto [movementTiles, attackTiles] = GetInteractionFields(
-								                          waitingAction.InitiatorId, Model);
+								                          Model, waitingAction.InitiatorId);
 
 							                          bool isInRange = attackTiles.Union(movementTiles).Contains(actionTarget.target);
 							                          bool isUnitThere = targetedUnit.IsSet();
@@ -228,13 +227,9 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 							                          //  }(initiatingUnit->attackRange, initiatingUnit->Movement,
 							                          //    {{-1, -1}}, actionTarget.target, pt);
 
-							                          return {Model, lager::noop};
-
 							                          // auto singleSubmitHandler =
 							                          //  CastChecked<USingleSubmitHandler>(
-							                          //   gameMode.AddComponentByClass(
-							                          //    USingleSubmitHandler::StaticClass(), false,
-							                          //    FTransform(), true));
+							                          //  	gameMode.AddComponentByClass( USingleSubmitHandler::StaticClass(), false, FTransform(), true));
 							                          // singleSubmitHandler->focusWorldLocation =
 							                          //  TilePositionToWorldPoint(pt);
 							                          // singleSubmitHandler->totalLength = 3.;
@@ -264,7 +259,8 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 							                          //  singleSubmitHandler, false, FTransform());
 							                          // gameMode.InputStateTransition(
 							                          //  new FAttackState(gameMode, singleSubmitHandler));
-							                          //
+						                          	
+							                          return {Model, lager::noop};
 						                          },
 						                          [&](auto) -> FDungeonReducerResult
 						                          {
@@ -312,25 +308,25 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 				             }
 			             }, Model.InteractionContext);
 		             },
-		             [&](FInteractAction action) -> FDungeonReducerResult
+		             [&](FInteractAction& action) -> FDungeonReducerResult
 		             {
 			             Model.InteractionsToResolve = action.interactions;
 			             Model.InteractionContext = action.interactions.Top();
 			             Model.WaitingForResolution = action.mainAction;
 			             return {Model, lager::noop};
 		             },
-		             [&](FWaitAction action) -> FDungeonReducerResult
+		             [&](FWaitAction& action) -> FDungeonReducerResult
 		             {
 			             Model.TurnState.unitsFinished.Add(action.InitiatorId);
 			             Model.InteractionContext.Set<FSelectingUnitContext>({});
 			             return {Model, lager::noop};
 		             },
-		             [&](FChangeState action) -> FDungeonReducerResult
+		             [&](FChangeState& action) -> FDungeonReducerResult
 		             {
 			             Model.InteractionContext = action.newState;
 			             return {Model, lager::noop};
 		             },
-		             [&](FEndTurnAction action) -> FDungeonReducerResult
+		             [&](FEndTurnAction& action) -> FDungeonReducerResult
 		             {
 			             const int MAX_PLAYERS = 2;
 			             const auto nextTeamId = (Model.TurnState.teamId % MAX_PLAYERS) + 1;
@@ -339,12 +335,12 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 			             Model.InteractionContext.Set<FSelectingUnitContext>(FSelectingUnitContext());
 			             return {Model, lager::noop};
 		             },
-		             [&](FCursorPositionUpdated Updated) -> FDungeonReducerResult
+		             [&](FCursorPositionUpdated& Updated) -> FDungeonReducerResult
 		             {
 			             Visit(FCursorPositionUpdatedHandler(Model, Updated.cursorPosition), Model.InteractionContext);
 			             return {Model, lager::noop};
 		             },
-		             [&](auto&& action) -> FDungeonReducerResult
+		             [&](auto& action) -> FDungeonReducerResult
 		             {
 			             using T = typename TDecay<decltype(action)>::Type;
 			             if constexpr (TIsInTypeUnion<T, FCombatAction, FMoveAction, FWaitAction>::Value)
@@ -573,29 +569,6 @@ AMapCursorPawn* ADungeonGameModeBase::GetMapCursorPawn()
 	       ->GetWorld()
 	       ->GetFirstPlayerController()
 	       ->GetPawn<AMapCursorPawn>();
-}
-
-bool ADungeonGameModeBase::canUnitMoveToPointInRange(int unitId, FIntPoint destination,
-                                                     const TSet<FIntPoint>& movementExtent)
-{
-	auto& map = Game.map;
-	if (map.unitAssignment.Contains(destination))
-		return false;
-
-	if (map.unitAssignment.FindKey(unitId) == nullptr)
-		return false;
-
-	return movementExtent.Contains(destination) && Game.unitIdToActor.Contains(unitId);
-}
-
-TOptional<FDungeonLogicUnit> ADungeonGameModeBase::FindUnit(FIntPoint pt)
-{
-	const auto& DungeonLogicMap = lager::view(mapLens, *this);
-	if (DungeonLogicMap.unitAssignment.Contains(pt))
-	{
-		return DungeonLogicMap.loadedUnits[DungeonLogicMap.unitAssignment[pt]];
-	}
-	return TOptional<FDungeonLogicUnit>();
 }
 
 void ADungeonGameModeBase::Tick(float deltaTime)

@@ -46,7 +46,8 @@ FReply FSelectingMenu::OnAttackButtonClick()
   (FIntPoint pt)
   {
     UKismetSystemLibrary::PrintString(&gameMode);
-    TOptional<FDungeonLogicUnit> foundUnit = gameMode.FindUnit(pt);
+    // TOptional<FDungeonLogicUnit> foundUnit = gameMode.FindUnit(pt);
+    TOptional<FDungeonLogicUnit> foundUnit;
     if (!TilesExtent.Contains(pt) || !foundUnit.IsSet() || foundUnit->teamId == initiatingUnit->teamId)
     {
       return false;
@@ -129,7 +130,8 @@ FReply FSelectingMenu::OnMoveSelected()
       TilesExtent = targets.FindAndRemoveChecked(ETargetsAvailableId::move)
     ](FIntPoint target)
   {
-    if (gameMode.canUnitMoveToPointInRange(initiatingUnit->Id, target, TilesExtent))
+    // if (gameMode.canUnitMoveToPointInRange(initiatingUnit->Id, target, TilesExtent))
+    if (false)
     {
       gameMode.Dispatch(TDungeonAction(TInPlaceType<FMoveAction>{}, initiatingUnit->Id, target));
     }
