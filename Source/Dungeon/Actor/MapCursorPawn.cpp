@@ -13,7 +13,6 @@
 #include "Dungeon/DungeonGameModeBase.h"
 #include "Dungeon/Lenses/model.hpp"
 #include "GameFramework/SpringArmComponent.h"
-#include "Utility/ContextSwitchVisitor.hpp"
 #include "Utility/HookFunctor.hpp"
 
 AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
@@ -140,7 +139,7 @@ void AMapCursorPawn::BeginPlay()
   (auto&& previous, auto&& next)
   {
     QueryInput.RemoveAll(this);
-    Visit(DungeonVisitor{
+    Visit(TDungeonVisitor{
       [&](FSelectingUnitContext& ctx)
       {
         QueryInput.AddUObject(this, &AMapCursorPawn::HandleSelectingQuery);

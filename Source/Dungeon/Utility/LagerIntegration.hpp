@@ -140,3 +140,17 @@ constexpr auto ignoreOptional = zug::comp([](auto&& f)
 			[&](auto&& x) { return TOptional<std::decay_t<decltype(p)>>(LAGER_FWD(x)); });
 	};
 });
+
+/*!
+ * `X -> Lens<[X], X>`
+ */
+template <typename T>
+auto unreal_value_or(T&& t)
+{
+    return zug::comp([t = std::forward<T>(t)](auto&& f) {
+        return [&, f = LAGER_FWD(f)](auto&& whole) {
+            return f(LAGER_FWD(whole).Get(std::move(t)))(
+                [&](auto&& x) { return LAGER_FWD(x); });
+        };
+    });
+}

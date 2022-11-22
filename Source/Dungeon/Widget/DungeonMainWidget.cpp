@@ -65,13 +65,10 @@ bool UDungeonMainWidget::Initialize()
 		
 	turnStateReader.watch(THookFunctor<int>(turnStateReader.get(), [this](int teamId)
 	                                        {
-		                                        TurnNotifierWidget->SetVisibility(ESlateVisibility::Visible);
 		                                        TurnNotifierWidget->PlayAnimation(TurnNotifierWidget->FadeIn, 0, 1,
 			                                        EUMGSequencePlayMode::PingPong, 1);
 	                                        }
 	));
-	
-	TurnNotifierWidget->SetVisibility(ESlateVisibility::Collapsed);
 
 	contextCursor = UseState(interactionContextLens);
 	contextCursor.bind(TPreviousHookFunctor<TInteractionContext>(contextCursor.get(), [&](auto&& previous, auto&& next)
@@ -88,12 +85,14 @@ bool UDungeonMainWidget::Initialize()
 	return true;
 }
 
+auto GetUnitIdFromContext = interactionContextLens | unreal_alternative<FUnitMenu> | ignoreOptional;
+	
 void UDungeonMainWidget::OnMoveClicked()
 {
 	StoreDispatch(TDungeonAction(
 		TInPlaceType<FInteractAction>{},
 		TStepAction(TInPlaceType<FMoveAction>{},
-		            UseViewState(interactionContextLens | unreal_alternative<FUnitMenu> | ignoreOptional).unitId
+		            UseViewState(GetUnitIdFromContext).unitId
 			),
 		TArray{TInteractionContext(TInPlaceType<FSelectingUnitAbilityTarget>{})}
 		));
@@ -105,7 +104,7 @@ void UDungeonMainWidget::OnAttackClicked()
 		TInPlaceType<FInteractAction>{},
 		TStepAction(TInPlaceType<FCombatAction>{}),
 		TArray{
-			TInteractionContext(TInPlaceType<FSelectingUnitAbilityTarget>{}),
+			TInteractionContext(TInPlaceType<FSelectingUnitAbilityTarget>{}, UseViewState(GetUnitIdFromContext ).unitId),
 			TInteractionContext(TInPlaceType<FUnitInteraction>{})
 		}));
 }
@@ -113,7 +112,7 @@ void UDungeonMainWidget::OnAttackClicked()
 void UDungeonMainWidget::OnWaitClicked()
 {
 	StoreDispatch(TDungeonAction( TInPlaceType<FWaitAction>{},
-		UseViewState(interactionContextLens | unreal_alternative<FUnitMenu> | ignoreOptional ).unitId
+		UseViewState(GetUnitIdFromContext ).unitId
 	));
 }
 

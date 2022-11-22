@@ -28,7 +28,7 @@ constexpr bool isInGuiControlledState()
 }
 
 template <class... Ts>
-using DungeonVisitor = lager::visitor<Ts...>;
+using TDungeonVisitor = lager::visitor<Ts...>;
 
 using TStoreAction = TDungeonAction;
 using TModelType = FDungeonWorldState;

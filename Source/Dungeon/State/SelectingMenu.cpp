@@ -84,9 +84,6 @@ FReply FSelectingMenu::OnAttackButtonClick()
       return output;
     }(initiatingUnit->attackRange, initiatingUnit->Movement, {{-1, -1}}, capturedCursorPosition, pt);
 
-    // gameMode.MovementVisualization->Clear();
-    // gameMode.MovementVisualization->ShowTiles(result);
-
     auto singleSubmitHandler =
       CastChecked<USingleSubmitHandler>(
         gameMode.AddComponentByClass(USingleSubmitHandler::StaticClass(), false, FTransform(), true));
