@@ -91,15 +91,6 @@ struct FCursorPositionUpdated
   FIntPoint cursorPosition;
 };
 
-template <typename Var1, typename Var2>
-struct variant_flat;
-
-template <typename ... Ts1, typename ... Ts2>
-struct variant_flat<TVariant<Ts1...>, TVariant<Ts2...>>
-{
-  using type = TVariant<Ts1..., Ts2...>;
-};
-
 using TInteractionContext = TVariant<
   FSelectingUnitContext,
   FMainMenu,

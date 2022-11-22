@@ -12,6 +12,11 @@ struct FCombatAction : public FUnitContextAction
 
   FCombatAction() = default;
 
+  FCombatAction(int InitiatorId)
+    : FUnitContextAction(InitiatorId)
+  {
+  }
+
   FCombatAction(int InitiatorId, const FDungeonLogicUnit& UpdatedUnit, double DamageValue, const FIntPoint& Target)
     : FUnitContextAction(InitiatorId),
       updatedUnit(UpdatedUnit),

@@ -38,6 +38,9 @@ struct unreal_alternative_pipeline_t : zug::detail::pipeable
 };
 
 template <typename T>
+inline auto unreal_alternative_pipeline = unreal_alternative_pipeline_t<T>{};
+
+template <typename T>
 struct unreal_alternative_t : zug::detail::pipeable
 {
 	using Part = TOptional<T>;

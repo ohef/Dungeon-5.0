@@ -97,26 +97,7 @@ void AMapCursorPawn::HandleSelectingTarget(FIntPoint queryPt)
 }
 
 void AMapCursorPawn::HandleSelectingQuery(FIntPoint queryPt) {
-  auto foundUnitOpt = UseState(interactionContextLens
-                     | unreal_alternative_pipeline_t<FSelectingUnitContext>()
-                     | map_opt(lager::lenses::attr(&FSelectingUnitContext::unitUnderCursor))
-                     | or_default)
-                   .make().get();
-
-  if (!foundUnitOpt.IsSet())
-    return;
-
-  auto foundUnitId = foundUnitOpt.GetValue() ;
-  auto isFinished = !UseViewState(isUnitFinishedLens2(foundUnitId)).IsSet();
-  
-  auto& TurnState = UseViewState(attr(&FDungeonWorldState::TurnState));
-  auto DungeonLogicUnit = UseViewState(unitDataLens(foundUnitId) | ignoreOptional);
-  
-  auto isOnTeam = TurnState.teamId == DungeonLogicUnit.teamId ;
-  if (isFinished && isOnTeam)
-  {
-    StoreDispatch(TDungeonAction(TInPlaceType<FChangeState>{}, TInteractionContext(TInPlaceType<FUnitMenu>{}, foundUnitId)));
-  }
+  StoreDispatch(TDungeonAction(TInPlaceType<FTargetSubmission>{}, queryPt));
 }
 
 
@@ -124,16 +105,6 @@ void AMapCursorPawn::BeginPlay()
 {
   Super::BeginPlay();
   interactionContextReader = UseState(interactionContextLens).make();
-  // interactionContextReader.bind(TPreviousHookFunctor<TInteractionContext>(interactionContextReader.get(),
-  // [this, contextHandler = FContextHandlerr(this)] 
-  // (auto&& previous, auto&& next) mutable 
-  // {
-  //   Visit(contextHandler,
-  //     Forward<decltype(previous)>(previous),
-  //     Forward<decltype(next)>(next));
-  //   return next;
-  // }));
-  
   interactionContextReader.bind(TPreviousHookFunctor<TInteractionContext>(interactionContextReader.get(),
   [this] 
   (auto&& previous, auto&& next)

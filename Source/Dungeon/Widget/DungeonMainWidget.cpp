@@ -7,7 +7,6 @@
 #include "Dungeon/Lenses/model.hpp"
 #include "lager/lenses/tuple.hpp"
 #include "Utility/HookFunctor.hpp"
-#include "Utility/ContextSwitchVisitor.hpp"
 
 UDungeonMainWidget::UDungeonMainWidget(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -17,8 +16,8 @@ struct FDungeonWidgetContextHandler
 {
 	TWeakObjectPtr<UDungeonMainWidget> dungeonWidget;
 	
-	FDungeonWidgetContextHandler(UDungeonMainWidget* Gm)
-		: dungeonWidget(Gm)
+	FDungeonWidgetContextHandler(UDungeonMainWidget* Widget)
+		: dungeonWidget(Widget)
 	{
 	}
 
@@ -85,34 +84,33 @@ bool UDungeonMainWidget::Initialize()
 	return true;
 }
 
-auto GetUnitIdFromContext = interactionContextLens | unreal_alternative<FUnitMenu> | ignoreOptional;
-	
+auto GetUnitIdFromContext = interactionContextLens | unreal_alternative_pipeline<FUnitMenu> | map_opt(attr(&FUnitMenu::unitId)) | value_or(-1);
+
 void UDungeonMainWidget::OnMoveClicked()
 {
+	int ViewState = UseViewState(GetUnitIdFromContext);
 	StoreDispatch(TDungeonAction(
 		TInPlaceType<FInteractAction>{},
-		TStepAction(TInPlaceType<FMoveAction>{},
-		            UseViewState(GetUnitIdFromContext).unitId
-			),
+		TStepAction(TInPlaceType<FMoveAction>{}, ViewState),
 		TArray{TInteractionContext(TInPlaceType<FSelectingUnitAbilityTarget>{})}
-		));
+	));
 }
 
 void UDungeonMainWidget::OnAttackClicked()
 {
 	StoreDispatch(TDungeonAction(
 		TInPlaceType<FInteractAction>{},
-		TStepAction(TInPlaceType<FCombatAction>{}),
+		TStepAction(TInPlaceType<FCombatAction>{}, UseViewState(GetUnitIdFromContext)),
 		TArray{
-			TInteractionContext(TInPlaceType<FSelectingUnitAbilityTarget>{}, UseViewState(GetUnitIdFromContext ).unitId),
-			TInteractionContext(TInPlaceType<FUnitInteraction>{})
+			TInteractionContext(TInPlaceType<FUnitInteraction>{}),
+			TInteractionContext(TInPlaceType<FSelectingUnitAbilityTarget>{})
 		}));
 }
 
 void UDungeonMainWidget::OnWaitClicked()
 {
-	StoreDispatch(TDungeonAction( TInPlaceType<FWaitAction>{},
-		UseViewState(GetUnitIdFromContext ).unitId
+	StoreDispatch(TDungeonAction(TInPlaceType<FWaitAction>{},
+	                             UseViewState(GetUnitIdFromContext)
 	));
 }
 

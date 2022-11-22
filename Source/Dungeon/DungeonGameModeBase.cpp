@@ -9,6 +9,8 @@
 #include "Actor/MapCursorPawn.h"
 #include "Actor/TileVisualizationActor.h"
 #include "DungeonUnitActor.h"
+#include "GraphAStar.h"
+#include "Algo/Accumulate.h"
 #include "Algo/Copy.h"
 #include "Algo/FindLast.h"
 #include "Blueprint/WidgetTree.h"
@@ -50,7 +52,7 @@ auto GetInteractionFields(int unitIdUnderCursor, FDungeonWorldState Model) -> TT
 	auto unitsPosition = lager::view(unitIdToPosition(unitIdUnderCursor), Model);
 
 	TSet<FIntPoint> points;
-	
+
 	bool unitCanTakeAction = !lager::view(isUnitFinishedLens2(unitIdUnderCursor), Model).IsSet();
 	int interactionDistance = foundUnitLogic.Movement + foundUnitLogic.attackRange;
 
@@ -130,6 +132,8 @@ using FDungeonReducerResult = std::pair<FDungeonWorldState, FDungeonEffect>;
 
 auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction) -> FDungeonReducerResult
 {
+	const auto DungeonView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
+
 	return Visit(TDungeonVisitor
 	             {
 		             [&](FBackAction) -> FDungeonReducerResult
@@ -145,143 +149,168 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 		             },
 		             [&](FTargetSubmission actionTarget) -> FDungeonReducerResult
 		             {
-			             auto shouldNotAct = Visit(TDungeonVisitor{
-				                                       [&](FMoveAction& a)
-				                                       {
-					                                       // auto foundUnitOpt = lager::view(interactionContextLens
-						                                      //  | unreal_alternative_pipeline_t<FSelectingUnitContext>()
-						                                      //  | map_opt(lager::lenses::attr(
-							                                     //   &FSelectingUnitContext::unitUnderCursor))
-						                                      //  | or_default, Model);
-
-					                                       bool bIsUnitThere = lager::view(getUnitAtPointLens(actionTarget.target), Model).IsSet();
-					                                       auto [movementTiles, attackTiles] = GetInteractionFields(a.InitiatorId, Model);
-					                                       return bIsUnitThere || !movementTiles.Contains(actionTarget.target);
-				                                       },
-				                                       [&](FCombatAction& a)
-				                                       {
-					                                       auto initiatingUnit = lager::view(unitDataLens(a.InitiatorId), Model);
-					                                       auto targetedUnitId = lager::view( getUnitAtPointLens(a.InitiatorId) | unreal_value_or(-1), Model);
-					                                       auto targetedUnit = lager::view( unitDataLens( targetedUnitId), Model);
-
-					                                       auto [movementTiles, attackTiles] = GetInteractionFields(a.InitiatorId, Model);
-
-					                                       if (!attackTiles.Contains(actionTarget.target) // can't attack stuff in range
-					                                       	|| !targetedUnit.IsSet() //can't attack nothing
-					                                       	|| targetedUnit->teamId == initiatingUnit->teamId) // can't attack your team
-					                                       {
-						                                       return false;
-					                                       }
-
-					                                       // //move unit, if applicable...
-					                                       // auto result = [&](
-						                                      //  int range, int maxPathLength,
-						                                      //  TArray<FIntPoint> suggestedMovement,
-						                                      //  FIntPoint currentPosition,
-						                                      //  FIntPoint target)
-						                                      //  {
-							                                     //   auto suggestedAttackingPoint = suggestedMovement.
-								                                    //    Last();
-							                                     //   auto attackableTiles = manhattanReachablePoints(
-								                                    //    999, 999, range, target);
-							                                     //   attackableTiles.Remove(target);
-							                                     //   if (attackableTiles.
-								                                    //    Contains(suggestedAttackingPoint))
-								                                    //    return suggestedMovement;
-					                                       //
-							                                     //   int solutionLength = 999999;
-							                                     //   auto output = Algo::Accumulate(
-								                                    //    attackableTiles, TArray<FIntPoint>(),
-								                                    //    [&](auto acc, auto val)
-								                                    //    {
-									                                   //     TArray<FIntPoint> daResult;
-									                                   //     FSimpleTileGraph SimpleTileGraph =
-										                                  //      FSimpleTileGraph(
-											                                 //       gameMode.Game.map, maxPathLength);
-									                                   //     FGraphAStar aStarGraph(SimpleTileGraph);
-									                                   //     aStarGraph.FindPath(
-										                                  //      currentPosition, target, SimpleTileGraph,
-										                                  //      daResult);
-					                                       //
-									                                   //     if (solutionLength > daResult.Num())
-									                                   //     {
-										                                  //      solutionLength = daResult.Num();
-										                                  //      return daResult;
-									                                   //     }
-									                                   //     else
-									                                   //     {
-										                                  //      return acc;
-									                                   //     }
-								                                    //    });
-					                                       //
-							                                     //   return output;
-						                                      //  }(initiatingUnit->attackRange, initiatingUnit->Movement,
-						                                      //    {{-1, -1}}, capturedCursorPosition, pt);
-					                                       //
-					                                       // auto singleSubmitHandler =
-						                                      //  CastChecked<USingleSubmitHandler>(
-							                                     //   gameMode.AddComponentByClass(
-								                                    //    USingleSubmitHandler::StaticClass(), false,
-								                                    //    FTransform(), true));
-					                                       // singleSubmitHandler->focusWorldLocation =
-						                                      //  TilePositionToWorldPoint(pt);
-					                                       // singleSubmitHandler->totalLength = 3.;
-					                                       // singleSubmitHandler->pivot = 1.5;
-					                                       // singleSubmitHandler->fallOffsFromPivot = {0.3f};
-					                                       // singleSubmitHandler->InteractionFinished.AddLambda(
-						                                      //  [this, foundUnit, pt]
-					                                       // (const FInteractionResults& results)
-						                                      //  {
-							                                     //   int sourceID = initiatingUnit->Id;
-							                                     //   int targetID = foundUnit->Id;
-							                                     //   auto initiator = gameMode.Game.map.loadedUnits.
-								                                    //    FindChecked(sourceID);
-							                                     //   auto target = gameMode.Game.map.loadedUnits.
-								                                    //    FindChecked(targetID);
-							                                     //   auto damage = initiator.damage - floor(
-								                                    //    (0.05 * results[0].order));
-							                                     //   target.HitPoints -= damage;
-					                                       //
-							                                     //   gameMode.Dispatch(
-								                                    //    TDungeonAction(
-									                                   //     TInPlaceType<FCombatAction>{}, sourceID,
-									                                   //     target, damage, pt));
-						                                      //  });
-					                                       //
-					                                       // gameMode.FinishAddComponent(
-						                                      //  singleSubmitHandler, false, FTransform());
-					                                       // gameMode.InputStateTransition(
-						                                      //  new FAttackState(gameMode, singleSubmitHandler));
-					                                       //
-					                                       return false;
-				                                       },
-				                                       [](auto&&) { return false; }
-			                                       }, lager::view(
-				                                       lager::lenses::attr(&FDungeonWorldState::WaitingForResolution),
-				                                       Model));
-
-			             //Abort if this returns true
-			             if (shouldNotAct)
-				             return {Model, lager::noop};
-
 			             return Visit(TDungeonVisitor{
-				                          [&](FMoveAction action) -> FDungeonReducerResult
-				                          {
-					                          action.Destination = actionTarget.target;
-					                          Model.InteractionsToResolve.Pop();
-					                          Model.InteractionContext.Set<FSelectingUnitContext>({});
-					                          return {
-						                          Model, FDungeonEffect([a = MoveTemp(action) ](auto& ctx)
+				             [&](FSelectingUnitAbilityTarget&) -> FDungeonReducerResult
+				             {
+					             return Visit(TDungeonVisitor{
+						                          [&](FMoveAction waitingAction) -> FDungeonReducerResult
 						                          {
-							                          ctx.dispatch(TDungeonAction(TInPlaceType<FMoveAction>{}, a));
-						                          })
-					                          };
-				                          },
-				                          [&](auto) -> FDungeonReducerResult
-				                          {
-					                          return {Model, lager::noop};
-				                          }
-			                          }, Model.WaitingForResolution);
+							                          bool bIsUnitThere = DungeonView(
+								                          getUnitAtPointLens(actionTarget.target)).IsSet();
+							                          auto [movementTiles, attackTiles] = GetInteractionFields(
+								                          waitingAction.InitiatorId, Model);
+							                          if (bIsUnitThere || !movementTiles.Contains(actionTarget.target))
+								                          return {Model, lager::noop};
+
+							                          waitingAction.Destination = actionTarget.target;
+							                          Model.InteractionsToResolve.Pop();
+							                          Model.InteractionContext.Set<FSelectingUnitContext>({});
+							                          return {
+								                          Model, FDungeonEffect([a = MoveTemp(waitingAction) ](auto& ctx)
+								                          {
+									                          ctx.dispatch(
+										                          TDungeonAction(TInPlaceType<FMoveAction>{}, a));
+								                          })
+							                          };
+						                          },
+						                          [&](FCombatAction& waitingAction) -> FDungeonReducerResult
+						                          {
+							                          TOptional<FDungeonLogicUnit> initiatingUnit = DungeonView(
+								                          unitDataLens(waitingAction.InitiatorId));
+							                          int targetedUnitId = DungeonView(
+								                          getUnitAtPointLens(actionTarget.target) | unreal_value_or(-1));
+							                          TOptional<FDungeonLogicUnit> targetedUnit = DungeonView(unitDataLens(targetedUnitId));
+
+							                          auto [movementTiles, attackTiles] = GetInteractionFields(
+								                          waitingAction.InitiatorId, Model);
+
+							                          bool isInRange = attackTiles.Union(movementTiles).Contains(actionTarget.target);
+							                          bool isUnitThere = targetedUnit.IsSet();
+							                          bool isTargetNotOnTheSameTeam = targetedUnit->teamId != initiatingUnit->teamId;
+							                          if (isInRange && isUnitThere && isTargetNotOnTheSameTeam)
+							                          {
+								                          waitingAction.target = actionTarget.target;
+								                          waitingAction.updatedUnit = targetedUnit.GetValue();
+								                          Model.InteractionsToResolve.Pop();
+								                          Model.InteractionContext = Model.InteractionsToResolve.Top();
+							                          }
+
+							                          // //move unit, if applicable...
+							                          // auto result = [&]( int range, int maxPathLength, TArray<FIntPoint> suggestedMovement, FIntPoint currentPosition, FIntPoint target)
+							                          // {
+							                          //   auto suggestedAttackingPoint = suggestedMovement.
+							                          //    Last();
+							                          //   auto attackableTiles = attackTiles;
+							                          //   if (attackableTiles.Contains(suggestedAttackingPoint))
+							                          //    return suggestedMovement;
+							                          //
+							                          //   int solutionLength = 999999;
+							                          //   auto output = Algo::Accumulate( attackableTiles, TArray<FIntPoint>(),
+							                          //    [&](auto acc, auto val)
+							                          //    {
+							                          //     TArray<FIntPoint> aStarResult;
+							                          //     FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph( Model.map, maxPathLength);
+							                          //     FGraphAStar aStarGraph(SimpleTileGraph);
+							                          //     aStarGraph.FindPath( currentPosition, target, SimpleTileGraph, aStarResult);
+							                          //
+							                          //     if (solutionLength > aStarResult.Num())
+							                          //     {
+							                          //      solutionLength = aStarResult.Num();
+							                          //      return aStarResult;
+							                          //     }
+							                          //     else
+							                          //     {
+							                          //      return acc;
+							                          //     }
+							                          //    });
+							                          //
+							                          //   return output;
+							                          //  }(initiatingUnit->attackRange, initiatingUnit->Movement,
+							                          //    {{-1, -1}}, actionTarget.target, pt);
+
+							                          return {Model, lager::noop};
+
+							                          // auto singleSubmitHandler =
+							                          //  CastChecked<USingleSubmitHandler>(
+							                          //   gameMode.AddComponentByClass(
+							                          //    USingleSubmitHandler::StaticClass(), false,
+							                          //    FTransform(), true));
+							                          // singleSubmitHandler->focusWorldLocation =
+							                          //  TilePositionToWorldPoint(pt);
+							                          // singleSubmitHandler->totalLength = 3.;
+							                          // singleSubmitHandler->pivot = 1.5;
+							                          // singleSubmitHandler->fallOffsFromPivot = {0.3f};
+							                          // singleSubmitHandler->InteractionFinished.AddLambda(
+							                          //  [this, foundUnit, pt]
+							                          // (const FInteractionResults& results)
+							                          //  {
+							                          //   int sourceID = initiatingUnit->Id;
+							                          //   int targetID = foundUnit->Id;
+							                          //   auto initiator = gameMode.Game.map.loadedUnits.
+							                          //    FindChecked(sourceID);
+							                          //   auto target = gameMode.Game.map.loadedUnits.
+							                          //    FindChecked(targetID);
+							                          //   auto damage = initiator.damage - floor(
+							                          //    (0.05 * results[0].order));
+							                          //   target.HitPoints -= damage;
+							                          //
+							                          //   gameMode.Dispatch(
+							                          //    TDungeonAction(
+							                          //     TInPlaceType<FCombatAction>{}, sourceID,
+							                          //     target, damage, pt));
+							                          //  });
+							                          //
+							                          // gameMode.FinishAddComponent(
+							                          //  singleSubmitHandler, false, FTransform());
+							                          // gameMode.InputStateTransition(
+							                          //  new FAttackState(gameMode, singleSubmitHandler));
+							                          //
+						                          },
+						                          [&](auto) -> FDungeonReducerResult
+						                          {
+							                          return {Model, lager::noop};
+						                          }
+					                          }, Model.WaitingForResolution);
+				             },
+				             [&](FSelectingUnitContext&) -> FDungeonReducerResult
+				             {
+					             auto foundUnitOpt = DungeonView(interactionContextLens
+						                                 | unreal_alternative_pipeline_t<FSelectingUnitContext>()
+						                                 | map_opt(lager::lenses::attr(
+							                                 &FSelectingUnitContext::unitUnderCursor))
+						                                 | or_default) ;
+
+					             if (!foundUnitOpt.IsSet())
+						             return {Model, lager::noop};
+
+					             auto foundUnitId = foundUnitOpt.GetValue();
+					             auto isFinished = !DungeonView(isUnitFinishedLens2(foundUnitId)).IsSet();
+
+					             const auto& TurnState = DungeonView(attr(&FDungeonWorldState::TurnState));
+					             auto DungeonLogicUnit = DungeonView(unitDataLens(foundUnitId) | ignoreOptional);
+
+					             auto isOnTeam = TurnState.teamId == DungeonLogicUnit.teamId;
+					             if (isFinished && isOnTeam)
+					             {
+						             return {
+							             Model, [foundUnitId](auto& ctx)
+							             {
+								             ctx.dispatch(
+									             TDungeonAction(TInPlaceType<FChangeState>{},
+									                            TInteractionContext(
+										                            TInPlaceType<FUnitMenu>{}, foundUnitId)));
+							             }
+						             };
+					             }
+				             	else {
+					             return {Model, lager::noop};
+				             	}
+				             },
+				             [&](auto) -> FDungeonReducerResult
+				             {
+					             return {Model, lager::noop};
+				             }
+			             }, Model.InteractionContext);
 		             },
 		             [&](FInteractAction action) -> FDungeonReducerResult
 		             {
