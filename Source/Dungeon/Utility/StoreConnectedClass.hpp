@@ -1,5 +1,6 @@
 ﻿#pragma once
-#include "Utility/Macros.hpp"
+#include "lager/lenses.hpp"
+#include "Macros.hpp"
 
 class ADungeonGameModeBase;
 

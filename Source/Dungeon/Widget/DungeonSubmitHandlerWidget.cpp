@@ -6,7 +6,6 @@
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
-#include "Components/TimelineComponent.h"
 #include "Dungeon/SingleSubmitHandler.h"
 #include "Engine/Canvas.h"
 #include "Kismet/KismetMaterialLibrary.h"
@@ -19,6 +18,14 @@ UDungeonSubmitHandlerWidget::UDungeonSubmitHandlerWidget(const FObjectInitialize
   CircleMaterial = NewMaterial6.Object;
 }
 
+void UDungeonSubmitHandlerWidget::RenderProperties(TArray<FIntervalPriority> IntervalPrioritiess, float TimelineLengthh,
+  float PlaybackPositionn)
+{
+  this->IntervalPriorities = IntervalPrioritiess;
+  this->TimelineLength = TimelineLengthh;
+  this->PlaybackPosition = PlaybackPositionn;
+}
+
 void UDungeonSubmitHandlerWidget::HandleHit()
 {
   PlayAnimation(OuterDissappear, 0, 1, EUMGSequencePlayMode::Forward, 1);
@@ -27,8 +34,6 @@ void UDungeonSubmitHandlerWidget::HandleHit()
 void UDungeonSubmitHandlerWidget::NativeOnInitialized()
 {
   Super::NativeOnInitialized();
-  TArray<FIntervalPriority> IntervalPriorities = singleSubmitHandler->handlers;
-  float TimelineLength = singleSubmitHandler->totalLength;
 
   FVector2D circleSize = FVector2D{500, 500};
   for (auto interval : IntervalPriorities)
@@ -54,10 +59,7 @@ void UDungeonSubmitHandlerWidget::NativeOnInitialized()
 void UDungeonSubmitHandlerWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
   Super::NativeTick(MyGeometry, InDeltaTime);
-  FTimeline Timeline = this->singleSubmitHandler->timeline;
-  float PlaybackPosition = Timeline.GetPlaybackPosition();
-  float TimelineLength = Timeline.GetTimelineLength();
-
+  
   CastChecked<UCanvasPanelSlot>(OuterCircle->Slot)->SetSize(
     InitialOuterCircleSize * (1.0 - (PlaybackPosition / TimelineLength)));
 }

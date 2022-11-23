@@ -21,16 +21,9 @@ USingleSubmitHandler::USingleSubmitHandler(const FObjectInitializer& ObjectIniti
   PrimaryComponentTick.bStartWithTickEnabled = true;
 }
 
-void USingleSubmitHandler::EndInteraction()
-{
-  HandlerWidget->RemoveFromViewport();
-  DestroyComponent();
-}
-
 void USingleSubmitHandler::RemoveAfterAnimationFinished()
 {
   InteractionFinished.Broadcast(results);
-  EndInteraction();
 }
 
 void USingleSubmitHandler::BeginPlay()
@@ -46,7 +39,8 @@ void USingleSubmitHandler::BeginPlay()
   HandlerWidget = NewObject<UDungeonSubmitHandlerWidget>(this, HandlerWidgetClass);
   auto InPlayerController = Cast<ADungeonPlayerController>(this->GetWorld()->GetFirstPlayerController());
   FQueryInput& QueryInput = InPlayerController->QueryInput;
-  FDelegateHandle handle = QueryInput.AddUObject(this, &USingleSubmitHandler::DoSubmit);
+  // FDelegateHandle handle = QueryInput.AddUObject(this, &USingleSubmitHandler::DoSubmit);
+  FDelegateHandle handle;
 
   stopCheckingQueries = [handle, &QueryInput]()
   {
@@ -57,13 +51,17 @@ void USingleSubmitHandler::BeginPlay()
   };
 
   HandlerWidget->SetPlayerContext(FLocalPlayerContext(InPlayerController));
-  HandlerWidget->singleSubmitHandler = this;
   HandlerWidget->Initialize();
   HandlerWidget->AddToViewport();
 
   auto widget = FWidgetAnimationDynamicEvent();
   widget.BindDynamic(this, &USingleSubmitHandler::RemoveAfterAnimationFinished);
   HandlerWidget->BindToAnimationFinished(HandlerWidget->OuterDissappear, MoveTemp(widget));
+  HandlerWidget->SetVisibility(ESlateVisibility::Collapsed);
+  HandlerWidget->IntervalPriorities = handlers;
+  HandlerWidget->TimelineLength = timeline.GetTimelineLength();
+
+  this->SetComponentTickEnabled(false);
 
   timeline.SetTimelineLengthMode(ETimelineLengthMode::TL_TimelineLength);
   timeline.SetTimelineLength(totalLength);
@@ -71,7 +69,7 @@ void USingleSubmitHandler::BeginPlay()
   timeline.Play();
 }
 
-void USingleSubmitHandler::DoSubmit(FIntPoint)
+void USingleSubmitHandler::DoSubmit()
 {
   GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Red, FString::SanitizeFloat(timeline.GetPlaybackPosition()), true,
                                    FVector2D::UnitVector * 3.0);
@@ -107,6 +105,7 @@ void USingleSubmitHandler::DoDaTick(float DeltaTime)
   FVector2D ScreenPosition;
   UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(InPlayerController, focusWorldLocation, ScreenPosition,
                                                              false);
+  HandlerWidget->PlaybackPosition = timeline.GetPlaybackPosition();
   HandlerWidget->SetRenderTranslation(FVector2D(ScreenPosition));
 }
 

@@ -17,9 +17,13 @@ void ADungeonPlayerController::Tick(float DeltaSeconds)
   Super::Tick(DeltaSeconds);
 }
 
-void ADungeonPlayerController::RaiseQuery()
+void ADungeonPlayerController::HandleQuery()
 {
-  QueryInput.Broadcast(FIntPoint());
+  // QueryInput.Broadcast(FIntPoint());
+  GetWorld()
+  ->GetAuthGameMode<ADungeonGameModeBase>()
+  ->SingleSubmitHandler
+  ->DoSubmit();
 }
 
 void ADungeonPlayerController::GoBackInteraction()
@@ -29,12 +33,20 @@ void ADungeonPlayerController::GoBackInteraction()
   ->Dispatch(TDungeonAction(TInPlaceType<FBackAction>{}));
 }
 
+void ADungeonPlayerController::HandleEnter(){
+}
+
+void ADungeonPlayerController::BeginPlay()
+{
+  Super::BeginPlay();
+}
+
 void ADungeonPlayerController::SetupInputComponent()
 {
   Super::SetupInputComponent();
 
   auto controller = static_cast<ADungeonPlayerController*>(GetWorld()->GetFirstPlayerController());
-  controller->InputComponent->BindAction(GQuery, EInputEvent::IE_Pressed, this, &ADungeonPlayerController::RaiseQuery)
+  controller->InputComponent->BindAction(GQuery, EInputEvent::IE_Pressed, this, &ADungeonPlayerController::HandleQuery)
   .bConsumeInput = false;
   
   controller->InputComponent->BindAction(GOpenMenu, EInputEvent::IE_Pressed, this, &ADungeonPlayerController::GoBackInteraction)

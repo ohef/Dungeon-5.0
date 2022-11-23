@@ -8,7 +8,8 @@
 #include "Components/CanvasPanel.h"
 #include "DungeonSubmitHandlerWidget.generated.h"
 
-class USingleSubmitHandler;
+
+struct FIntervalPriority;
 /**
  * 
  */
@@ -33,7 +34,12 @@ public:
   UDungeonSubmitHandlerWidget(const FObjectInitializer& Initializer);
   
   FVector2D InitialOuterCircleSize;
-  TWeakObjectPtr<USingleSubmitHandler> singleSubmitHandler;
+
+  //Stuff
+  void RenderProperties(TArray<FIntervalPriority> IntervalPrioritiess, float TimelineLengthh, float PlaybackPositionn);
+  TArray<FIntervalPriority> IntervalPriorities;
+  float TimelineLength;
+  float PlaybackPosition;
 
   UFUNCTION()
   void HandleHit();

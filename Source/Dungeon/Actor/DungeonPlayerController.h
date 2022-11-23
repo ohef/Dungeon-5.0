@@ -20,8 +20,10 @@ public:
   FQueryInput QueryInput;
 
   virtual void Tick(float DeltaSeconds) override;
-  void RaiseQuery();
+  void HandleQuery();
   void GoBackInteraction();
+  void HandleEnter();
+  virtual void BeginPlay() override;
 
   virtual void SetupInputComponent() override;
 };

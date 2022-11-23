@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "Components/TimelineComponent.h"
+#include "Logic/DungeonGameState.h"
+#include "Utility/StoreConnectedClass.hpp"
 #include "Widget/DungeonSubmitHandlerWidget.h"
 
 #include "SingleSubmitHandler.generated.h"
@@ -26,7 +28,7 @@ struct FIntervalPriority : public FFloatInterval
 using FInteractionResults = TArray<FIntervalPriority>;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), Blueprintable)
-class DUNGEON_API USingleSubmitHandler : public UActorComponent
+class DUNGEON_API USingleSubmitHandler : public UActorComponent/*, public FStoreConnectedClass<USingleSubmitHandler, TDungeonAction>*/
 {
   GENERATED_BODY()
 
@@ -45,8 +47,6 @@ public:
   UPROPERTY(EditAnywhere)
   FVector focusWorldLocation;
 
-  void EndInteraction();
-
   FInteractionFinished InteractionFinished;
   FInteractionResults results;
 
@@ -57,7 +57,7 @@ public:
   FTimeline timeline;
   FSlateBrush materialBrush;
 
-  virtual void DoSubmit(FIntPoint);
+  virtual void DoSubmit();
   void DoDaTick(float DeltaTime);
   TArray<FIntervalPriority> handlers;
   

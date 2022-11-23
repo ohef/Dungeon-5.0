@@ -6,6 +6,7 @@
 #include <Logic/DungeonGameState.h>
 
 #include "CoreMinimal.h"
+#include "SingleSubmitHandler.h"
 #include "TargetsAvailableId.h"
 #include "Actions/CombatAction.h"
 #include "Actor/MapCursorPawn.h"
@@ -121,6 +122,9 @@ public:
   UTileVisualizationComponent* TileVisualizationComponent;
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   UTileVisualizationComponent* MovementVisualization;
+
+  UPROPERTY(VisibleAnywhere)
+  USingleSubmitHandler* SingleSubmitHandler;
 
   TUniquePtr<FDungeonLogicUnit> LastSeenUnitUnderCursor;
   FTextBlockStyle style;

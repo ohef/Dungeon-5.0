@@ -227,38 +227,6 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 							                          //  }(initiatingUnit->attackRange, initiatingUnit->Movement,
 							                          //    {{-1, -1}}, actionTarget.target, pt);
 
-							                          // auto singleSubmitHandler =
-							                          //  CastChecked<USingleSubmitHandler>(
-							                          //  	gameMode.AddComponentByClass( USingleSubmitHandler::StaticClass(), false, FTransform(), true));
-							                          // singleSubmitHandler->focusWorldLocation =
-							                          //  TilePositionToWorldPoint(pt);
-							                          // singleSubmitHandler->totalLength = 3.;
-							                          // singleSubmitHandler->pivot = 1.5;
-							                          // singleSubmitHandler->fallOffsFromPivot = {0.3f};
-							                          // singleSubmitHandler->InteractionFinished.AddLambda(
-							                          //  [this, foundUnit, pt]
-							                          // (const FInteractionResults& results)
-							                          //  {
-							                          //   int sourceID = initiatingUnit->Id;
-							                          //   int targetID = foundUnit->Id;
-							                          //   auto initiator = gameMode.Game.map.loadedUnits.
-							                          //    FindChecked(sourceID);
-							                          //   auto target = gameMode.Game.map.loadedUnits.
-							                          //    FindChecked(targetID);
-							                          //   auto damage = initiator.damage - floor(
-							                          //    (0.05 * results[0].order));
-							                          //   target.HitPoints -= damage;
-							                          //
-							                          //   gameMode.Dispatch(
-							                          //    TDungeonAction(
-							                          //     TInPlaceType<FCombatAction>{}, sourceID,
-							                          //     target, damage, pt));
-							                          //  });
-							                          //
-							                          // gameMode.FinishAddComponent(
-							                          //  singleSubmitHandler, false, FTransform());
-							                          // gameMode.InputStateTransition(
-							                          //  new FAttackState(gameMode, singleSubmitHandler));
 						                          	
 							                          return {Model, lager::noop};
 						                          },
@@ -302,7 +270,7 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 					             return {Model, lager::noop};
 				             	}
 				             },
-				             [&](auto) -> FDungeonReducerResult
+				             [&](auto&) -> FDungeonReducerResult
 				             {
 					             return {Model, lager::noop};
 				             }
@@ -529,6 +497,9 @@ void ADungeonGameModeBase::BeginPlay()
 			]
 		]
 	);
+
+	this->SingleSubmitHandler = static_cast<USingleSubmitHandler*>(this->AddComponentByClass(
+		USingleSubmitHandler::StaticClass(), false, FTransform(), false));
 }
 
 void ADungeonGameModeBase::GoBackOnInputState()

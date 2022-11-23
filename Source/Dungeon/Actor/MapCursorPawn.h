@@ -47,12 +47,9 @@ protected:
   ZoomLevelNode* currentZoom;
   
 public:
-  void HandleSelectingTarget(FIntPoint queryPt);
-  void HandleSelectingQuery(FIntPoint queryPt);
   void CycleZoom();
   
   lager::reader<FDungeonWorldState> reader;
-  lager::reader<TInteractionContext> interactionContextReader;
 
   UFUNCTION(BlueprintCallable)
   virtual void Tick(float DeltaTime) override;
@@ -64,6 +61,7 @@ public:
   FCursorEvent CursorEvent;
 	UPROPERTY(BlueprintAssignable, Category="MapCursorPawn")
   FCursorEventDynamic DynamicCursorEvent;
+  //Deprecated
   FQueryInput QueryInput;
 
   UPROPERTY(VisibleAnywhere, BlueprintReadWrite)

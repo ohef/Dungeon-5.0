@@ -19,7 +19,7 @@ void FSelectingMenu::Enter()
 
   MapCursorPawn->MovementComponent->ToggleActive();
   gameMode.MainWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Visible);
-  gameMode.RefocusMenu();
+  // gameMode.RefocusMenu();
 
   //TODO: eh could template this somehow
   StaticCastSharedRef<SButton>(gameMode.MainWidget->Move->TakeWidget())

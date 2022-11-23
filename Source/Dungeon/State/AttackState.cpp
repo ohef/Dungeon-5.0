@@ -8,7 +8,7 @@ void FAttackState::Exit()
 {
   if (SingleSubmitHandler.IsValid())
   {
-    SingleSubmitHandler->EndInteraction();
+    // SingleSubmitHandler->EndInteraction();
   }
 }
 
