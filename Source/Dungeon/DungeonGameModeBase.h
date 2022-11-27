@@ -98,6 +98,8 @@ public:
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Movement)
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Name)
   CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, HitPoints)
+  DECLARE_MULTICAST_DELEGATE_OneParam(TDungeonActionDispatched, const TDungeonAction& )
+  TDungeonActionDispatched DungeonActionDispatched;
 
   FText GetCurrentTurnId() const;
 

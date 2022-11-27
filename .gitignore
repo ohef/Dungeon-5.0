@@ -1,0 +1,6 @@
+Intermediate/**
+node_modules/**
+Binaries/**
+.vs/**
+.idea/**
+Saved/**

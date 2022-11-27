@@ -5,12 +5,13 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "lager/reader.hpp"
+#include "Logic/DungeonGameState.h"
 #include "Logic/unit.h"
 #include "Utility/StoreConnectedClass.hpp"
 #include "DungeonUnitActor.generated.h"
 
 UCLASS()
-class DUNGEON_API ADungeonUnitActor : public AActor/*, public FStoreConnectedClass<ADungeonUnitActor, TDungeonAction>*/
+class DUNGEON_API ADungeonUnitActor : public AActor, public FStoreConnectedClass<ADungeonUnitActor, TDungeonAction>
 {
   GENERATED_BODY()
   
@@ -29,6 +30,7 @@ public:
   using FReaderType = std::tuple<FDungeonLogicUnit, FIntPoint, TOptional<int>>;
   lager::reader<FReaderType> reader;
   void hookIntoStore();
+  void HandleGlobalEvent(const TDungeonAction& action);
   
   UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")
   void React(FDungeonLogicUnit updatedState);

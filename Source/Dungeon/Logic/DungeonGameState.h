@@ -7,10 +7,10 @@
 
 #include "map.h"
 #include "TargetsAvailableId.h"
-#include "Actions/InteractAction.hpp"
 #include "Dungeon/Actions/CombatAction.h"
 #include "Dungeon/Actions/EndTurnAction.h"
 #include "Dungeon/Actions/MoveAction.h"
+#include "Rhythm/IntervalPriority.h"
 #include "DungeonGameState.generated.h"
 
 //vim macro: OUSTRUCT()<C-c>jjoGENERATED_BODY()
@@ -26,6 +26,16 @@ struct FTurnState
 USTRUCT()
 struct FUnitInteraction
 {
+  friend bool operator==(const FUnitInteraction& Lhs, const FUnitInteraction& RHS)
+  {
+    return Lhs.unitId == RHS.unitId;
+  }
+
+  friend bool operator!=(const FUnitInteraction& Lhs, const FUnitInteraction& RHS)
+  {
+    return !(Lhs == RHS);
+  }
+
   GENERATED_BODY()
   int unitId;
 };
@@ -116,15 +126,16 @@ struct FInteractAction
 	TArray<TInteractionContext> interactions;
 };
 
-struct FTargetSubmission
+struct FCursorQueryTarget
 {
   FIntPoint target;
 };
 
 using TDungeonAction = TVariant<
   FEmptyVariantState,
+  FInteractionResults,
   FInteractAction,
-  FTargetSubmission,
+  FCursorQueryTarget,
   FChangeState,
   FCursorPositionUpdated,
   FMoveAction,

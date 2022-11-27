@@ -32,4 +32,11 @@ struct FStoreConnectedClass
     ->store
     ->get());
   }
+  
+  auto& UseEvent() {
+    return static_cast<TThis*>(this)
+    ->GetWorld()
+    ->template GetAuthGameMode<ADungeonGameModeBase>()
+    ->DungeonActionDispatched;
+  }
 };

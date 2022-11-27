@@ -5,13 +5,16 @@
 #include "CoreMinimal.h"
 #include "Dungeon/Dungeon.h"
 #include "GameFramework/PlayerController.h"
+#include "Utility/StoreConnectedClass.hpp"
+#include "DungeonGameModeBase.h"
+#include "Rhythm/IntervalPriority.h"
 #include "DungeonPlayerController.generated.h"
 
 /**
  * 
  */
 UCLASS()
-class DUNGEON_API ADungeonPlayerController : public APlayerController
+class DUNGEON_API ADungeonPlayerController : public APlayerController, public FStoreConnectedClass<ADungeonPlayerController, TDungeonAction>
 {
   GENERATED_BODY()
 public:
@@ -24,6 +27,10 @@ public:
   void GoBackInteraction();
   void HandleEnter();
   virtual void BeginPlay() override;
+	
+  void BeginInteraction(TOptional<FInteractionResults> interactionResults);
+
+  lager::reader<TOptional<FUnitInteraction>> interactionReader;
 
   virtual void SetupInputComponent() override;
 };

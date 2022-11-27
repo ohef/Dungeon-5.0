@@ -37,6 +37,7 @@ struct unreal_alternative_pipeline_t : zug::detail::pipeable
 	}
 };
 
+//TODO: I'm just being lazy and using lagers optional chaining instead of writing my own version for unreal, what a pain
 template <typename T>
 inline auto unreal_alternative_pipeline = unreal_alternative_pipeline_t<T>{};
 
@@ -127,7 +128,12 @@ auto Find(Key key)
 			{
 				auto r = std::forward<Whole>(whole);
 				if (part.IsSet() && r.Contains(key))
-					*(r.Find(key)) = std::forward<Part>(part).GetValue();
+				{
+					if constexpr (TIsTMap<typename TDecay<Whole>::Type>::Value)
+					{
+						r.Emplace(key, std::forward<Part>(part).GetValue());
+					}
+				}
 				return r;
 			});
 		};

@@ -142,7 +142,7 @@ void AMapCursorPawn::CycleZoom()
 
 void AMapCursorPawn::Query()
 {
-  StoreDispatch(TDungeonAction(TInPlaceType<FTargetSubmission>{}, CurrentPosition));
+  StoreDispatch(TDungeonAction(TInPlaceType<FCursorQueryTarget>{}, CurrentPosition));
 }
 
 void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

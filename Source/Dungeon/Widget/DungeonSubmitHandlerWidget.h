@@ -34,9 +34,11 @@ public:
   UDungeonSubmitHandlerWidget(const FObjectInitializer& Initializer);
   
   FVector2D InitialOuterCircleSize;
+  TArray<TWeakObjectPtr<UWidget>> addedCircles;
 
   //Stuff
   void RenderProperties(TArray<FIntervalPriority> IntervalPrioritiess, float TimelineLengthh, float PlaybackPositionn);
+  void Stop();
   TArray<FIntervalPriority> IntervalPriorities;
   float TimelineLength;
   float PlaybackPosition;
@@ -44,6 +46,5 @@ public:
   UFUNCTION()
   void HandleHit();
   
-  virtual void NativeOnInitialized() override;
   virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 };

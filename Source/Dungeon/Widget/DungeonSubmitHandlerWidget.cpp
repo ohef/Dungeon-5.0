@@ -24,23 +24,21 @@ void UDungeonSubmitHandlerWidget::RenderProperties(TArray<FIntervalPriority> Int
   this->IntervalPriorities = IntervalPrioritiess;
   this->TimelineLength = TimelineLengthh;
   this->PlaybackPosition = PlaybackPositionn;
-}
-
-void UDungeonSubmitHandlerWidget::HandleHit()
-{
-  PlayAnimation(OuterDissappear, 0, 1, EUMGSequencePlayMode::Forward, 1);
-}
-
-void UDungeonSubmitHandlerWidget::NativeOnInitialized()
-{
-  Super::NativeOnInitialized();
 
   FVector2D circleSize = FVector2D{500, 500};
+
+  for (auto AddedCircle : addedCircles)
+  {
+    AddedCircle->RemoveFromParent();
+  }
+  addedCircles.Empty();
+  
   for (auto interval : IntervalPriorities)
   {
-    auto circleWidget = NewObject<UBorder>(
-      this, UBorder::StaticClass());
-    auto PanelSlot = CastChecked<UCanvasPanelSlot>(Container->AddChild(circleWidget));
+    UBorder* circleWidget = NewObject<UBorder>( this, UBorder::StaticClass());
+    UPanelSlot* Src = Container->AddChild(circleWidget);
+    addedCircles.Add(Src->Content);
+    UCanvasPanelSlot* PanelSlot = CastChecked<UCanvasPanelSlot>(Src);
     PanelSlot->SetSize(circleSize);
     PanelSlot->SetPosition({0, 0});
     PanelSlot->SetAlignment({0.5, 0.5});
@@ -56,10 +54,24 @@ void UDungeonSubmitHandlerWidget::NativeOnInitialized()
   InitialOuterCircleSize = circleSize;
 }
 
+void UDungeonSubmitHandlerWidget::Stop()
+{
+  for (auto AddedCircle : addedCircles)
+  {
+    AddedCircle->RemoveFromParent();
+  }
+  addedCircles.Empty();
+  
+  OuterCircle->SetRenderOpacity(1.0);
+  this->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+void UDungeonSubmitHandlerWidget::HandleHit()
+{
+  PlayAnimation(OuterDissappear, 0, 1, EUMGSequencePlayMode::Forward, 1,true);
+}
+
 void UDungeonSubmitHandlerWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
   Super::NativeTick(MyGeometry, InDeltaTime);
-  
-  CastChecked<UCanvasPanelSlot>(OuterCircle->Slot)->SetSize(
-    InitialOuterCircleSize * (1.0 - (PlaybackPosition / TimelineLength)));
 }

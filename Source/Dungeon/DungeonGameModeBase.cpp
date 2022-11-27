@@ -10,7 +10,6 @@
 #include "Actor/TileVisualizationActor.h"
 #include "DungeonUnitActor.h"
 #include "GraphAStar.h"
-#include "Algo/Accumulate.h"
 #include "Algo/Copy.h"
 #include "Algo/FindLast.h"
 #include "Blueprint/WidgetTree.h"
@@ -129,7 +128,7 @@ struct FBackTransitions
 using FDungeonEffect = lager::effect<TDungeonAction>;
 using FDungeonReducerResult = std::pair<FDungeonWorldState, FDungeonEffect>;
 
-auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction) -> FDungeonReducerResult
+auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction) -> FDungeonReducerResult
 {
 	const auto DungeonView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
 
@@ -146,7 +145,31 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 				                          },
 			                          }, Model.InteractionContext);
 		             },
-		             [&](FTargetSubmission& actionTarget) -> FDungeonReducerResult
+		             [&](FInteractionAction& action) -> FDungeonReducerResult
+		             {
+			             return Visit(TDungeonVisitor{
+				                          [&](FCombatAction& waitingAction) -> FDungeonReducerResult
+				                          {
+					                          auto damage = DungeonView(unitDataLens(waitingAction.InitiatorId))->damage
+						                          - floor((0.05 * action[0].order));
+
+					                          waitingAction.updatedUnit.HitPoints -= damage;
+					                          waitingAction.damageValue = damage;
+
+					                          Model.InteractionsToResolve.Pop();
+
+					                          return {Model, [waitingAction = MoveTemp(waitingAction)](auto ctx)
+					                          {
+					                          	ctx.dispatch(TDungeonAction(TInPlaceType<FCombatAction>{}, waitingAction));
+					                          }};
+				                          },
+				                          [&](auto) -> FDungeonReducerResult
+				                          {
+					                          return {Model, lager::noop};
+				                          }
+			                          }, Model.WaitingForResolution);
+		             },
+		             [&](FCursorQueryTarget& actionTarget) -> FDungeonReducerResult
 		             {
 			             return Visit(TDungeonVisitor{
 				             [&](FSelectingUnitAbilityTarget&) -> FDungeonReducerResult
@@ -164,12 +187,12 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 							                          waitingAction.Destination = actionTarget.target;
 							                          Model.InteractionsToResolve.Pop();
 							                          Model.InteractionContext.Set<FSelectingUnitContext>({});
-							                          return {
-								                          Model, FDungeonEffect([a = MoveTemp(waitingAction) ](auto& ctx)
+							                          return {Model,
+								                          [waitingAction = MoveTemp(waitingAction)](auto ctx)
 								                          {
-									                          ctx.dispatch(
-										                          TDungeonAction(TInPlaceType<FMoveAction>{}, a));
-								                          })
+									                          ctx.dispatch(TDungeonAction(
+										                          TInPlaceType<FMoveAction>{}, waitingAction));
+								                          }
 							                          };
 						                          },
 						                          [&](FCombatAction& waitingAction) -> FDungeonReducerResult
@@ -185,7 +208,7 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 
 							                          bool isInRange = attackTiles.Union(movementTiles).Contains(actionTarget.target);
 							                          bool isUnitThere = targetedUnit.IsSet();
-							                          bool isTargetNotOnTheSameTeam = targetedUnit->teamId != initiatingUnit->teamId;
+							                          bool isTargetNotOnTheSameTeam = targetedUnit.IsSet() && targetedUnit->teamId != initiatingUnit->teamId;
 							                          if (isInRange && isUnitThere && isTargetNotOnTheSameTeam)
 							                          {
 								                          waitingAction.target = actionTarget.target;
@@ -226,7 +249,6 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 							                          //   return output;
 							                          //  }(initiatingUnit->attackRange, initiatingUnit->Movement,
 							                          //    {{-1, -1}}, actionTarget.target, pt);
-
 						                          	
 							                          return {Model, lager::noop};
 						                          },
@@ -303,9 +325,9 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 			             Model.InteractionContext.Set<FSelectingUnitContext>(FSelectingUnitContext());
 			             return {Model, lager::noop};
 		             },
-		             [&](FCursorPositionUpdated& Updated) -> FDungeonReducerResult
+		             [&](FCursorPositionUpdated& cpeEvent) -> FDungeonReducerResult
 		             {
-			             Visit(FCursorPositionUpdatedHandler(Model, Updated.cursorPosition), Model.InteractionContext);
+			             Visit(FCursorPositionUpdatedHandler(Model, cpeEvent.cursorPosition), Model.InteractionContext);
 			             return {Model, lager::noop};
 		             },
 		             [&](auto& action) -> FDungeonReducerResult
@@ -329,9 +351,11 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 					             [&](FCombatAction& CombatAction)
 					             {
 						             FDungeonLogicUnit& Unit = CombatAction.updatedUnit;
-						             Unit.state = Model.TurnState.unitsFinished.Contains(Unit.Id)
+						             Unit.state = DungeonView(isUnitFinishedLens2(Unit.Id)).IsSet()
 							                          ? UnitState::ActionTaken
 							                          : UnitState::Free;
+						             Model = lager::set(unitDataLens(Unit.Id), Model, CombatAction.updatedUnit);
+						             Model.InteractionContext.Set<FSelectingUnitContext>({});
 					             },
 					             [&](FWaitAction& WaitAction)
 					             {
@@ -343,6 +367,28 @@ auto WorldStateReducer = [](FDungeonWorldState Model, TDungeonAction worldAction
 		             },
 	             }, worldAction);
 };
+
+auto WithGlobalEventMiddleware(const ADungeonGameModeBase& gamemode)
+{
+    return [&](auto next) {
+        return [&,next](auto action,
+                               auto&& model,
+                               auto&& reducer,
+                               auto&& loop,
+                               auto&& deps,
+                               auto&& tags) {
+            return next(action,
+                        LAGER_FWD(model),
+                        [reducer, &gamemode](auto m, auto a) {
+	                        gamemode.DungeonActionDispatched.Broadcast(a);
+	                        return reducer(LAGER_FWD(m), LAGER_FWD(a));
+                        },
+                        LAGER_FWD(loop),
+                        LAGER_FWD(deps),
+                        LAGER_FWD(tags));
+        };
+    };
+}
 
 void ADungeonGameModeBase::BeginPlay()
 {
@@ -406,7 +452,8 @@ void ADungeonGameModeBase::BeginPlay()
 		lager::make_store<TStoreAction>(
 			TModelType(this->Game),
 			lager::with_manual_event_loop{},
-			lager::with_reducer(WorldStateReducer)
+			lager::with_reducer(WorldStateReducer),
+			WithGlobalEventMiddleware(*this)
 		));
 
 	for (auto UnitIdToActor : static_cast<const FDungeonWorldState>(store->get()).unitIdToActor)
@@ -445,7 +492,7 @@ void ADungeonGameModeBase::BeginPlay()
 	style = FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
 	style.SetColorAndOpacity(FSlateColor(FLinearColor::White));
 
-	auto styleSetter = [&](FString&& fieldName, auto&& methodPointer) -> decltype(SVerticalBox::Slot())
+	auto AttributeDisplay = [&](FString&& AttributeName, auto&& methodPointer) -> decltype(SVerticalBox::Slot())
 	{
 		return MoveTemp(SVerticalBox::Slot().AutoHeight()[
 			SNew(SHorizontalBox)
@@ -454,24 +501,32 @@ void ADungeonGameModeBase::BeginPlay()
 				SNew(STextBlock)
            .TextStyle(&style)
            .Font(InAttribute)
-           .Text(FText::FromString(fieldName))
+           .Text(FText::FromString(DUNGEON_FOWARD(AttributeName)))
 			]
 			+ SHorizontalBox::Slot()
 			[
 				SNew(STextBlock)
            .TextStyle(&style)
            .Font(InAttribute)
-           .Text_UObject(this, methodPointer)
+           .Text_Lambda(DUNGEON_FOWARD(methodPointer))
 			]
 		]);
 	};
 
+	auto unitPropertyToText = [&](auto&& getter)
+	{
+		return [this,getter = DUNGEON_FOWARD(getter)]{
+		const auto& unitUnderCursor = lager::view(getUnitUnderCursor, store->get());
+		return unitUnderCursor.IsSet() ? FCoerceToFText::Value(getter(unitUnderCursor.GetValue())) : FText();
+		};
+	};
+	
 	MainWidget->UnitDisplay->SetContent(
 		SNew(SVerticalBox)
-		+ styleSetter("Name", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorName)
-		+ styleSetter("HitPoints", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorHitPoints)
-		+ styleSetter("Movement", &ADungeonGameModeBase::GetLastSeenUnitUnderCursorMovement)
-		+ styleSetter("Turn ID", &ADungeonGameModeBase::GetCurrentTurnId)
+		+ AttributeDisplay("Name", unitPropertyToText([](const FDungeonLogicUnit x){return x.Name; }))
+		+ AttributeDisplay("HitPoints", unitPropertyToText([](const FDungeonLogicUnit x){return x.HitPoints; }))
+		+ AttributeDisplay("Movement", unitPropertyToText([](const FDungeonLogicUnit x){return x.Movement; }))
+		+ AttributeDisplay("Turn ID", [&] { return GetCurrentTurnId(); })
 		+ SVerticalBox::Slot().AutoHeight()[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot()

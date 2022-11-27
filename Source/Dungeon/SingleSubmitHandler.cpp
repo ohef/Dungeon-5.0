@@ -1,10 +1,12 @@
 ﻿#include "SingleSubmitHandler.h"
 
+#include "DungeonConstants.h"
 #include "Actor/DungeonPlayerController.h"
 #include "Actor/MapCursorPawn.h"
 #include "Algo/Accumulate.h"
 #include "Algo/Transform.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -23,33 +25,16 @@ USingleSubmitHandler::USingleSubmitHandler(const FObjectInitializer& ObjectIniti
 
 void USingleSubmitHandler::RemoveAfterAnimationFinished()
 {
-  InteractionFinished.Broadcast(results);
+  HandlerWidget->Stop();
+  interactionEnd.Execute(results);
 }
 
 void USingleSubmitHandler::BeginPlay()
 {
   Super::BeginPlay();
 
-  int orderi = 1;
-  Algo::Transform(fallOffsFromPivot, handlers, [this, &orderi](float x)
-  {
-    return FIntervalPriority(pivot - x, pivot + x, orderi++);
-  });
-
   HandlerWidget = NewObject<UDungeonSubmitHandlerWidget>(this, HandlerWidgetClass);
   auto InPlayerController = Cast<ADungeonPlayerController>(this->GetWorld()->GetFirstPlayerController());
-  FQueryInput& QueryInput = InPlayerController->QueryInput;
-  // FDelegateHandle handle = QueryInput.AddUObject(this, &USingleSubmitHandler::DoSubmit);
-  FDelegateHandle handle;
-
-  stopCheckingQueries = [handle, &QueryInput]()
-  {
-    if (handle.IsValid())
-    {
-      QueryInput.Remove(handle);
-    }
-  };
-
   HandlerWidget->SetPlayerContext(FLocalPlayerContext(InPlayerController));
   HandlerWidget->Initialize();
   HandlerWidget->AddToViewport();
@@ -58,40 +43,59 @@ void USingleSubmitHandler::BeginPlay()
   widget.BindDynamic(this, &USingleSubmitHandler::RemoveAfterAnimationFinished);
   HandlerWidget->BindToAnimationFinished(HandlerWidget->OuterDissappear, MoveTemp(widget));
   HandlerWidget->SetVisibility(ESlateVisibility::Collapsed);
-  HandlerWidget->IntervalPriorities = handlers;
-  HandlerWidget->TimelineLength = timeline.GetTimelineLength();
 
   this->SetComponentTickEnabled(false);
+}
 
+void USingleSubmitHandler::Begin(TDelegate<void(TOptional<FInteractionResults>)> interactionEndd)
+{
+  focusWorldLocation = TilePositionToWorldPoint({2, 2});
+
+  // TODO: allow for updating this?
+  // totalLength = 3.;
+  // pivot = 1.5;
+  // fallOffsFromPivot = {0.3f};
+  
+  int orderi = 1;
+  handlers.Empty();
+  Algo::Transform(fallOffsFromPivot, handlers, [this, &orderi](float x)
+  {
+    return FIntervalPriority(pivot - x, pivot + x, orderi++);
+  });
+  
   timeline.SetTimelineLengthMode(ETimelineLengthMode::TL_TimelineLength);
   timeline.SetTimelineLength(totalLength);
   timeline.SetLooping(true);
   timeline.Play();
+
+  HandlerWidget->RenderProperties(handlers, timeline.GetTimelineLength(), timeline.GetPlaybackPosition());
+  HandlerWidget->SetVisibility(ESlateVisibility::Visible);
+  
+  interactionEnd = interactionEndd;
+  this->SetComponentTickEnabled(true);
 }
 
 void USingleSubmitHandler::DoSubmit()
 {
   GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Red, FString::SanitizeFloat(timeline.GetPlaybackPosition()), true,
                                    FVector2D::UnitVector * 3.0);
-  FIntervalPriority* found = nullptr;
+  TOptional<FIntervalPriority> found;
   for (int i = 0; i < handlers.Num(); i++)
   {
-    found = handlers[i].Contains(timeline.GetPlaybackPosition()) ? handlers.GetData() + i : nullptr;
+    found = handlers[i].Contains(timeline.GetPlaybackPosition()) ? TOptional(handlers[i]) : found;
   }
 
-  if (found != nullptr)
+  if (found.IsSet())
   {
-    auto foundResult = *found;
+    FIntervalPriority foundResult = *found;
     this->SetComponentTickEnabled(false);
-    timeline.Stop();
     foundResult.hitTime = timeline.GetPlaybackPosition();
     results.Add(MoveTemp(foundResult));
     HandlerWidget->HandleHit();
-    stopCheckingQueries();
   }
 }
 
-void USingleSubmitHandler::DoDaTick(float DeltaTime)
+void USingleSubmitHandler::TickOuterCircle(float DeltaTime)
 {
   timeline.TickTimeline(DeltaTime);
 
@@ -107,11 +111,14 @@ void USingleSubmitHandler::DoDaTick(float DeltaTime)
                                                              false);
   HandlerWidget->PlaybackPosition = timeline.GetPlaybackPosition();
   HandlerWidget->SetRenderTranslation(FVector2D(ScreenPosition));
+
+  CastChecked<UCanvasPanelSlot>(HandlerWidget->OuterCircle->Slot)->SetSize(
+    HandlerWidget->InitialOuterCircleSize * (1.0 - (HandlerWidget->PlaybackPosition / HandlerWidget->TimelineLength)));
 }
 
 void USingleSubmitHandler::TickComponent(float DeltaTime, ELevelTick TickType,
                                          FActorComponentTickFunction* ThisTickFunction)
 {
   Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-  DoDaTick(DeltaTime);
+  TickOuterCircle(DeltaTime);
 }

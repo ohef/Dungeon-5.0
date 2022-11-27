@@ -5,11 +5,41 @@
 
 #include "DungeonConstants.h"
 #include "Dungeon/DungeonGameModeBase.h"
+#include "Lenses/model.hpp"
 
 ADungeonPlayerController::ADungeonPlayerController(const FObjectInitializer& ObjectInitializer): Super(
   ObjectInitializer)
 {
   bBlockInput = false;
+}
+
+void ADungeonPlayerController::BeginPlay()
+{
+  interactionReader = UseState(interactionContextLens | unreal_alternative<FUnitInteraction> ).make();
+  interactionReader.watch([this](const TOptional<FUnitInteraction>& wew)
+  {
+    if(wew.IsSet()){
+      GetWorld()
+        ->GetAuthGameMode<ADungeonGameModeBase>()
+        ->SingleSubmitHandler
+        ->Begin(TDelegate<void(TOptional<FInteractionResults>)>::CreateUObject(
+          this, &ADungeonPlayerController::BeginInteraction));
+    }
+    else
+    {
+      GetWorld()
+        ->GetAuthGameMode<ADungeonGameModeBase>()
+        ->SingleSubmitHandler->HandlerWidget->Stop();
+    }
+  });
+  
+  Super::BeginPlay();
+}
+
+void ADungeonPlayerController::BeginInteraction(TOptional<FInteractionResults> interactionResults)
+{
+  if(interactionResults.IsSet())
+    StoreDispatch(TDungeonAction(TInPlaceType<FInteractionAction>{}, interactionResults.GetValue()));
 }
 
 void ADungeonPlayerController::Tick(float DeltaSeconds)
@@ -19,11 +49,13 @@ void ADungeonPlayerController::Tick(float DeltaSeconds)
 
 void ADungeonPlayerController::HandleQuery()
 {
-  // QueryInput.Broadcast(FIntPoint());
-  GetWorld()
-  ->GetAuthGameMode<ADungeonGameModeBase>()
-  ->SingleSubmitHandler
-  ->DoSubmit();
+  if (UseViewState(interactionContextLens | unreal_alternative<FUnitInteraction>).IsSet())
+  {
+    GetWorld()
+      ->GetAuthGameMode<ADungeonGameModeBase>()
+      ->SingleSubmitHandler
+      ->DoSubmit();
+  }
 }
 
 void ADungeonPlayerController::GoBackInteraction()
@@ -31,14 +63,6 @@ void ADungeonPlayerController::GoBackInteraction()
   GetWorld()
   ->GetAuthGameMode<ADungeonGameModeBase>()
   ->Dispatch(TDungeonAction(TInPlaceType<FBackAction>{}));
-}
-
-void ADungeonPlayerController::HandleEnter(){
-}
-
-void ADungeonPlayerController::BeginPlay()
-{
-  Super::BeginPlay();
 }
 
 void ADungeonPlayerController::SetupInputComponent()

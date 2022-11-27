@@ -56,7 +56,7 @@ const auto interactionContextLens =
 const auto isMainMenuLens =
   interactionContextLens
   | unreal_alternative<FMainMenu>;
-
+                        
 const auto getUnitAtPointLens = [](const FIntPoint& pt)
 {
   return attr(&FDungeonWorldState::map)
@@ -85,8 +85,7 @@ const auto unitIdToPosition = [](int unitId)
 
 const auto unitDataLens = [](int id)
 {
-  return SimpleCastTo<FDungeonWorldState>
-    | attr(&FDungeonWorldState::map)
+  return attr(&FDungeonWorldState::map)
     | attr(&FDungeonLogicMap::loadedUnits)
     | Find(id);
 };
@@ -95,3 +94,16 @@ const auto thisUnitLens = [](int id)
 {
   return unitDataLens(id) | ignoreOptional;
 };
+
+const auto getUnitUnderCursor =
+  lager::lenses::getset([&](const FDungeonWorldState& m) -> TOptional<FDungeonLogicUnit> 
+                        {
+                          TOptional<int> v = lager::view(interactionContextLens
+                                                         | unreal_alternative_pipeline<FSelectingUnitContext>
+                                                         | map_opt(attr(&FSelectingUnitContext::unitUnderCursor))
+                                                         | or_default, m);
+                          if(!v.IsSet())
+                            return {};
+
+                          return lager::view(unitDataLens(*v), m);
+                        }, [](auto m, auto) { return m; });

@@ -29,6 +29,8 @@ void ADungeonUnitActor::hookIntoStore()
                ->store
                ->zoom(lager::lenses::fan(thisUnitLens(id), unitIdToPosition(id), isUnitFinishedLens2(id)))
                .make();
+  
+  UseEvent().AddUObject(this, &ADungeonUnitActor::HandleGlobalEvent);
 
   reader.bind([&](const auto& ReaderVal)
   {
@@ -42,6 +44,20 @@ void ADungeonUnitActor::hookIntoStore()
     this->React(DungeonLogicUnit);
     this->SetActorLocation(TilePositionToWorldPoint(IntPoint));
   });
+}
+
+void ADungeonUnitActor::HandleGlobalEvent(const TDungeonAction& action) {
+  Visit([this](auto&& event)
+  {
+    using TEventType = typename TDecay<decltype(event)>::Type;
+    if constexpr (TIsSame<FCombatAction, TEventType>::Value)
+    {
+      if(lager::view(first, reader.get()).Id == event.InitiatorId)
+      {
+        UKismetSystemLibrary::PrintString(this, "fuckyou");
+      }
+    }
+  }, action);
 }
 
 // Called every frame

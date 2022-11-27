@@ -5,27 +5,11 @@
 #include "CoreMinimal.h"
 #include "Components/TimelineComponent.h"
 #include "Logic/DungeonGameState.h"
-#include "Utility/StoreConnectedClass.hpp"
 #include "Widget/DungeonSubmitHandlerWidget.h"
 
 #include "SingleSubmitHandler.generated.h"
 
 class SSingleSubmitHandlerWidget;
-
-struct FIntervalPriority : public FFloatInterval
-{
-  int8 order;
-  float hitTime;
-
-  using FFloatInterval::FFloatInterval;
-
-  FIntervalPriority(float InMin, float InMax, int8 order)
-    : FFloatInterval(InMin, InMax), order(order)
-  {
-  }
-};
-
-using FInteractionResults = TArray<FIntervalPriority>;
 
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent), Blueprintable)
 class DUNGEON_API USingleSubmitHandler : public UActorComponent/*, public FStoreConnectedClass<USingleSubmitHandler, TDungeonAction>*/
@@ -41,24 +25,23 @@ public:
   float pivot = 3.0;
   UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="IntervalHandler")
   TArray<float> fallOffsFromPivot{0.3f, .5f, .75f};
-
-  TFunction<void()> stopCheckingQueries;
-
   UPROPERTY(EditAnywhere)
   FVector focusWorldLocation;
+  UPROPERTY()
+  UDungeonSubmitHandlerWidget* HandlerWidget;
 
+  TDelegate<void(TOptional<FInteractionResults>)> interactionEnd;
   FInteractionFinished InteractionFinished;
   FInteractionResults results;
 
-  UPROPERTY()
-  UDungeonSubmitHandlerWidget* HandlerWidget;
   TSubclassOf<UDungeonSubmitHandlerWidget> HandlerWidgetClass;
 
   FTimeline timeline;
   FSlateBrush materialBrush;
 
   virtual void DoSubmit();
-  void DoDaTick(float DeltaTime);
+  void TickOuterCircle(float DeltaTime);
+  void Begin( TDelegate<void(TOptional<FInteractionResults>)> interactionEnd );
   TArray<FIntervalPriority> handlers;
   
 public:
