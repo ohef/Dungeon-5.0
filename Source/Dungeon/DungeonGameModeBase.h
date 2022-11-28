@@ -17,12 +17,11 @@
 #include "GameFramework/GameModeBase.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "lager/store.hpp"
-#include "State/State.h"
-#include "Widget/DungeonMainWidget.h"
 #include "Widget/Menus/EasyMenu.h"
 
 #include "DungeonGameModeBase.generated.h"
 
+class UDungeonMainWidget;
 class UTileVisualizationComponent;
 struct FSelectingGameState;
 struct ProgramState;
@@ -37,15 +36,6 @@ struct FAbilityParams : public FTableRowBase
 };
 
 USTRUCT()
-struct FAttackResults
-{
-  GENERATED_BODY()
-
-  TSet<FIntPoint> AllAttackTiles;
-  TSet<FIntPoint> AttackableUnitTiles;
-};
-
-USTRUCT()
 struct FStructThing : public FTableRowBase
 {
   GENERATED_BODY()
@@ -57,8 +47,6 @@ struct FStructThing : public FTableRowBase
   UPROPERTY(EditAnywhere, BlueprintReadOnly)
   int Movement;
 };
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FAttackDelegate, FAttackResults const &, AttackResults);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCombatActionEvent, FCombatAction, action);
 
@@ -94,10 +82,6 @@ public:
   virtual void Tick(float time) override;
   void Dispatch(TDungeonAction&& unionAction);
 
-  CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Id)
-  CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Movement)
-  CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, Name)
-  CREATE_GETTER_FOR_PROPERTY(LastSeenUnitUnderCursor, HitPoints)
   DECLARE_MULTICAST_DELEGATE_OneParam(TDungeonActionDispatched, const TDungeonAction& )
   TDungeonActionDispatched DungeonActionDispatched;
 
@@ -130,34 +114,12 @@ public:
 
   TUniquePtr<FDungeonLogicUnit> LastSeenUnitUnderCursor;
   FTextBlockStyle style;
-  TSharedPtr<FState> baseState;
-  TArray<TSharedPtr<FState>> stateStack;
   TSubclassOf<UDungeonMainWidget> MainWidgetClass;
   TQueue<TUniquePtr<FTimeline>> AnimationQueue;
   // using TStoreAction = THistoryAction<TAction>;
   // using TModelType = FHistoryModel<FDungeonWorldState>;
   TUniquePtr<TDungeonStore> store;
   lager::reader<TInteractionContext> interactionReader;
-
-  void GoBackOnInputState();
-
-  template <typename TState>
-  void InputStateTransition(TState* state)
-  {
-    if (stateStack.IsEmpty())
-      baseState->Exit();
-    else
-      stateStack.Top()->Exit();
-
-    stateStack.Push(MakeShareable<TState>(state));
-    stateStack.Top()->Enter();
-  }
-
-  TWeakPtr<FState> GetCurrentState();
-
-  void CommitAndGotoBaseState();
-
-  void RefocusMenu();
 
   template <typename T>
   void SubmitLinearAnimation(T* movable, FIntPoint from, FIntPoint to, float time)

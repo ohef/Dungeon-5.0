@@ -10,11 +10,11 @@
 #include "Components/NativeWidgetHost.h"
 #include "Components/VerticalBox.h"
 
-#include "lager/cursor.hpp"
 #include "lager/reader.hpp"
 #include "Logic/DungeonGameState.h"
 #include "Menus/MainMapMenu.h"
 #include "Utility/StoreConnectedClass.hpp"
+#include "Dungeon/DungeonGameModeBase.h"
 
 #include "DungeonMainWidget.generated.h"
 

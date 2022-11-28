@@ -6,10 +6,10 @@
 #include "Blueprint/UserWidget.h"
 #include "Components/Border.h"
 #include "Components/CanvasPanel.h"
+#include "Rhythm/IntervalPriority.h"
 #include "DungeonSubmitHandlerWidget.generated.h"
 
 
-struct FIntervalPriority;
 /**
  * 
  */

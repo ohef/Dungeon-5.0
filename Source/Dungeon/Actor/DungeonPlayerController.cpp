@@ -29,7 +29,9 @@ void ADungeonPlayerController::BeginPlay()
     {
       GetWorld()
         ->GetAuthGameMode<ADungeonGameModeBase>()
-        ->SingleSubmitHandler->HandlerWidget->Stop();
+        ->SingleSubmitHandler
+        ->HandlerWidget
+        ->Stop();
     }
   });
   

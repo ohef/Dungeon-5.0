@@ -9,6 +9,7 @@
 #include "Actor/MapCursorPawn.h"
 #include "Actor/TileVisualizationActor.h"
 #include "DungeonUnitActor.h"
+#include "Widget/DungeonMainWidget.h"
 #include "GraphAStar.h"
 #include "Algo/Copy.h"
 #include "Algo/FindLast.h"
@@ -24,7 +25,6 @@
 #include "Logic/SimpleTileGraph.h"
 #include "Logic/util.h"
 #include "Serialization/Csv/CsvParser.h"
-#include "State/SelectingGameState.h"
 #include "Utility/VariantVisitor.hpp"
 
 ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectInitializer) :
@@ -555,38 +555,6 @@ void ADungeonGameModeBase::BeginPlay()
 
 	this->SingleSubmitHandler = static_cast<USingleSubmitHandler*>(this->AddComponentByClass(
 		USingleSubmitHandler::StaticClass(), false, FTransform(), false));
-}
-
-void ADungeonGameModeBase::GoBackOnInputState()
-{
-	if (stateStack.IsEmpty())
-		return;
-	auto popped = stateStack.Pop();
-	popped->Exit();
-
-	if (stateStack.IsEmpty())
-		baseState->Enter();
-	else
-		stateStack.Top()->Enter();
-}
-
-TWeakPtr<FState> ADungeonGameModeBase::GetCurrentState()
-{
-	return stateStack.IsEmpty() ? baseState : stateStack.Top();
-}
-
-void ADungeonGameModeBase::CommitAndGotoBaseState()
-{
-	GetCurrentState().Pin()->Exit();
-	stateStack.Empty();
-	GetCurrentState().Pin()->Enter();
-}
-
-void ADungeonGameModeBase::RefocusMenu()
-{
-	if (MainWidget->Move->HasUserFocus(0))
-		return;
-	MainWidget->Move->SetFocus();
 }
 
 AMapCursorPawn* ADungeonGameModeBase::GetMapCursorPawn()

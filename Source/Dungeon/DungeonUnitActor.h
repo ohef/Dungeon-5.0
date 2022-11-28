@@ -8,6 +8,7 @@
 #include "Logic/DungeonGameState.h"
 #include "Logic/unit.h"
 #include "Utility/StoreConnectedClass.hpp"
+#include "DungeonGameModeBase.h"
 #include "DungeonUnitActor.generated.h"
 
 UCLASS()

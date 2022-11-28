@@ -54,7 +54,7 @@ void ADungeonUnitActor::HandleGlobalEvent(const TDungeonAction& action) {
     {
       if(lager::view(first, reader.get()).Id == event.InitiatorId)
       {
-        UKismetSystemLibrary::PrintString(this, "fuckyou");
+        UKismetSystemLibrary::PrintString(this, "your life means everything, you serve ALL purpose");
       }
     }
   }, action);
