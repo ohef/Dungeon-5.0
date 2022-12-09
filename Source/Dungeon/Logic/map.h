@@ -18,6 +18,8 @@ struct FDungeonLogicMap
   int Height;
 
   UPROPERTY(Category=Dungeon, VisibleAnywhere)
+  TMap<int, FName> abilityOwnership;
+  UPROPERTY(Category=Dungeon, VisibleAnywhere)
   TMap<int, FDungeonLogicUnit> loadedUnits;
   UPROPERTY(Category=Dungeon, VisibleAnywhere)
   TMap<int, FDungeonLogicTile> loadedTiles;

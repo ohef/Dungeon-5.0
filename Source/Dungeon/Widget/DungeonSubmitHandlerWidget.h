@@ -7,8 +7,8 @@
 #include "Components/Border.h"
 #include "Components/CanvasPanel.h"
 #include "Rhythm/IntervalPriority.h"
-#include "DungeonSubmitHandlerWidget.generated.h"
 
+#include "DungeonSubmitHandlerWidget.generated.h"
 
 /**
  * 
@@ -27,7 +27,6 @@ public:
   UWidgetAnimation* OuterDissappear;
   UPROPERTY(BlueprintReadWrite)
   UMaterialInterface* CircleMaterial;
-  
   UPROPERTY(Transient)
   UMaterialInstanceDynamic* InnerCircleMaterial;
 
@@ -38,13 +37,15 @@ public:
 
   //Stuff
   void RenderProperties(TArray<FIntervalPriority> IntervalPrioritiess, float TimelineLengthh, float PlaybackPositionn);
-  void Stop();
   TArray<FIntervalPriority> IntervalPriorities;
   float TimelineLength;
   float PlaybackPosition;
 
   UFUNCTION()
+  void Stop();
+  UFUNCTION()
   void HandleHit();
   
   virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+  virtual void NativeOnInitialized() override;
 };

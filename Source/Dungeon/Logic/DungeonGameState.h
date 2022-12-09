@@ -28,7 +28,8 @@ struct FUnitInteraction
 {
   friend bool operator==(const FUnitInteraction& Lhs, const FUnitInteraction& RHS)
   {
-    return Lhs.unitId == RHS.unitId;
+    return Lhs.targetIDUnderFocus == RHS.targetIDUnderFocus
+      && Lhs.originatorID == RHS.originatorID;
   }
 
   friend bool operator!=(const FUnitInteraction& Lhs, const FUnitInteraction& RHS)
@@ -37,7 +38,9 @@ struct FUnitInteraction
   }
 
   GENERATED_BODY()
-  int unitId;
+
+  int targetIDUnderFocus;
+  int originatorID;
 };
 
 USTRUCT()
@@ -74,7 +77,9 @@ USTRUCT()
 struct FUnitMenu
 {
   GENERATED_BODY()
+  
   int unitId;
+  TSet<FName> deactivatedAbilities;
 };
 
 USTRUCT()
@@ -84,12 +89,6 @@ struct FSelectingUnitAbilityTarget
   
   int unitId;
   int abilityId;
-};
-
-struct FMapCursor
-{
-  FIntPoint Position;
-  bool Enabled;
 };
 
 struct FBackAction
@@ -120,7 +119,7 @@ using TStepAction = TVariant<
   FCombatAction
 >;
 
-struct FInteractAction
+struct FSteppedAction
 {
 	TStepAction mainAction;
 	TArray<TInteractionContext> interactions;
@@ -131,10 +130,18 @@ struct FCursorQueryTarget
   FIntPoint target;
 };
 
+struct FCommitAction
+{
+};
+
+struct FCheckPoint
+{
+};
+
 using TDungeonAction = TVariant<
   FEmptyVariantState,
   FInteractionResults,
-  FInteractAction,
+  FSteppedAction,
   FCursorQueryTarget,
   FChangeState,
   FCursorPositionUpdated,
@@ -142,7 +149,8 @@ using TDungeonAction = TVariant<
   FCombatAction,
   FEndTurnAction,
   FBackAction,
-  FWaitAction
+  FWaitAction,
+  FCommitAction
 >;
 
 USTRUCT()

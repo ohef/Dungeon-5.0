@@ -69,4 +69,5 @@ public:
   
   lager::reader<TInteractionContext> contextCursor;
   lager::reader<int> turnStateReader;
+	TMap<FName, TFunction<bool()>> notApplicable;
 };

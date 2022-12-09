@@ -23,6 +23,19 @@ struct FDungeonLogicUnit : public FTableRowBase
   {
   }
 
+  FDungeonLogicUnit(int Id, int Damage, int HitPoints, const TEnumAsByte<UnitState>& State, const FString& Name,
+    int Movement, int TeamId, int AttackRange)
+    : Id(Id),
+      damage(Damage),
+      HitPoints(HitPoints),
+      state(State),
+      Name(Name),
+      Movement(Movement),
+      teamId(TeamId),
+      attackRange(AttackRange)
+  {
+  }
+
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   int Id;
 
@@ -70,6 +83,15 @@ USTRUCT()
 struct FDungeonLogicUnitRow : public FTableRowBase
 {
   GENERATED_BODY()
+
+  FDungeonLogicUnitRow()
+  {
+  }
+
+  FDungeonLogicUnitRow(const FDungeonLogicUnit& UnitData)
+    : unitData(UnitData)
+  {
+  }
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   FDungeonLogicUnit unitData;

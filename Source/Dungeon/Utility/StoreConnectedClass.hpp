@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "lager/lenses.hpp"
 #include "Macros.hpp"
+#include "Lenses/SimpleCastTo.hpp"
 
 class ADungeonGameModeBase;
 
@@ -22,11 +23,11 @@ struct FStoreConnectedClass
     ->GetWorld()
     ->template GetAuthGameMode<ADungeonGameModeBase>()
     ->store
-    ->zoom(DUNGEON_FOWARD(lens));
+    ->zoom(SimpleCastTo<FDungeonWorldState> | lens);
   }
   
   decltype(auto) UseViewState(auto&& lens) {
-    return lager::view(DUNGEON_FOWARD(lens), static_cast<TThis*>(this)
+    return lager::view(SimpleCastTo<FDungeonWorldState> | lens, static_cast<TThis*>(this)
     ->GetWorld()
     ->template GetAuthGameMode<ADungeonGameModeBase>()
     ->store

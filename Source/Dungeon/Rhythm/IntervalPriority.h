@@ -14,4 +14,4 @@ struct FIntervalPriority : public FFloatInterval
 };
 
 using FInteractionResults = TArray<FIntervalPriority>;
-using FInteractionAction = FInteractionResults;
+using FTimingInteractionResults = FInteractionResults;

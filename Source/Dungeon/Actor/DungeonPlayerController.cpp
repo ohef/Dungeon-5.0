@@ -16,14 +16,16 @@ ADungeonPlayerController::ADungeonPlayerController(const FObjectInitializer& Obj
 void ADungeonPlayerController::BeginPlay()
 {
   interactionReader = UseState(interactionContextLens | unreal_alternative<FUnitInteraction> ).make();
-  interactionReader.watch([this](const TOptional<FUnitInteraction>& wew)
+  interactionReader.watch([this](const TOptional<FUnitInteraction>& UnitInteraction)
   {
-    if(wew.IsSet()){
+    if(UnitInteraction.IsSet()){
+      FIntPoint Point = UseViewState(unitIdToPosition(UnitInteraction->targetIDUnderFocus));
       GetWorld()
         ->GetAuthGameMode<ADungeonGameModeBase>()
         ->SingleSubmitHandler
         ->Begin(TDelegate<void(TOptional<FInteractionResults>)>::CreateUObject(
-          this, &ADungeonPlayerController::BeginInteraction));
+                  this, &ADungeonPlayerController::BeginInteraction),
+                TilePositionToWorldPoint(Point));
     }
     else
     {
@@ -41,7 +43,7 @@ void ADungeonPlayerController::BeginPlay()
 void ADungeonPlayerController::BeginInteraction(TOptional<FInteractionResults> interactionResults)
 {
   if(interactionResults.IsSet())
-    StoreDispatch(TDungeonAction(TInPlaceType<FInteractionAction>{}, interactionResults.GetValue()));
+    StoreDispatch(TDungeonAction(TInPlaceType<FTimingInteractionResults>{}, interactionResults.GetValue()));
 }
 
 void ADungeonPlayerController::Tick(float DeltaSeconds)

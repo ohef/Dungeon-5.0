@@ -61,6 +61,13 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
 void AMapCursorPawn::BeginPlay()
 {
   Super::BeginPlay();
+  UseEvent().AddLambda([&](const TDungeonAction& variant)
+  {
+    if (variant.IsType<FBackAction>())
+    {
+      RootComponent->SetWorldLocation(TilePositionToWorldPoint(UseViewState(cursorPositionLens)));
+    }
+  });
   
   reader = UseState(SimpleCastTo<FDungeonWorldState>).make();
   reader.bind([&](const FDungeonWorldState& model)

@@ -25,6 +25,14 @@
 		{
 			"Name": "Synthesis",
 			"Enabled": false
+		},
+		{
+			"Name": "TestSamples",
+			"Enabled": true
+		},
+		{
+			"Name": "FunctionalTestingEditor",
+			"Enabled": true
 		}
 	]
 }

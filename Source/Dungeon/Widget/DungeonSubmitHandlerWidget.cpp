@@ -3,12 +3,10 @@
 
 #include "DungeonSubmitHandlerWidget.h"
 
-#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
-#include "Dungeon/SingleSubmitHandler.h"
-#include "Engine/Canvas.h"
 #include "Kismet/KismetMaterialLibrary.h"
+#include "UMG/Public/Animation/WidgetAnimation.h"
 
 UDungeonSubmitHandlerWidget::UDungeonSubmitHandlerWidget(const FObjectInitializer& Initializer) : Super(Initializer)
 {
@@ -52,6 +50,8 @@ void UDungeonSubmitHandlerWidget::RenderProperties(TArray<FIntervalPriority> Int
   }
 
   InitialOuterCircleSize = circleSize;
+  OuterCircle->SetRenderOpacity(1.0);
+  SetVisibility(ESlateVisibility::Visible);
 }
 
 void UDungeonSubmitHandlerWidget::Stop()
@@ -61,7 +61,6 @@ void UDungeonSubmitHandlerWidget::Stop()
     AddedCircle->RemoveFromParent();
   }
   addedCircles.Empty();
-  
   OuterCircle->SetRenderOpacity(1.0);
   this->SetVisibility(ESlateVisibility::Collapsed);
 }
@@ -74,4 +73,12 @@ void UDungeonSubmitHandlerWidget::HandleHit()
 void UDungeonSubmitHandlerWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
   Super::NativeTick(MyGeometry, InDeltaTime);
+}
+
+void UDungeonSubmitHandlerWidget::NativeOnInitialized()
+{
+  Super::NativeOnInitialized();
+  FWidgetAnimationDynamicEvent delegate = FWidgetAnimationDynamicEvent();
+  delegate.BindDynamic(this, &UDungeonSubmitHandlerWidget::Stop);
+  this->BindToAnimationFinished(OuterDissappear, delegate);
 }

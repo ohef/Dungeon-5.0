@@ -9,6 +9,7 @@
 #include "Logic/unit.h"
 #include "Utility/StoreConnectedClass.hpp"
 #include "DungeonGameModeBase.h"
+#include "Widget/DamageWidget.h"
 #include "DungeonUnitActor.generated.h"
 
 UCLASS()
@@ -27,7 +28,7 @@ protected:
 public:
   
   int id;
-  // lager::reader<FDungeonLogicUnit> reader;
+  FIntPoint lastPosition;
   using FReaderType = std::tuple<FDungeonLogicUnit, FIntPoint, TOptional<int>>;
   lager::reader<FReaderType> reader;
   void hookIntoStore();
@@ -35,6 +36,17 @@ public:
   
   UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")
   void React(FDungeonLogicUnit updatedState);
+  
+  UPROPERTY(EditAnywhere,BlueprintReadWrite)
+  UInterpToMovementComponent* InterpToMovementComponent;
+  
+  UPROPERTY(EditAnywhere,BlueprintReadWrite)
+  USceneComponent* PathRotation;
+  
+  UPROPERTY(Transient)
+  TSubclassOf<UDamageWidget> DamageWidgetClass;
+  UPROPERTY(Transient)
+  UDamageWidget* DamageWidget;
   
   virtual void Tick(float DeltaTime) override;
 };

@@ -1,8 +1,13 @@
 #pragma once
 #include "Action.h"
 
+#include "MoveAction.generated.h"
+
+USTRUCT()
 struct FMoveAction : public FAction
 {
+  GENERATED_BODY()
+  
   int InitiatorId;
   FIntPoint Destination;
 

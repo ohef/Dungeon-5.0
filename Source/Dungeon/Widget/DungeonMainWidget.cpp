@@ -3,12 +3,50 @@
 
 #include "DungeonMainWidget.h"
 
+#include "Algo/Accumulate.h"
 #include "Dungeon/Lenses/model.hpp"
+#include "Logic/util.h"
 #include "Utility/HookFunctor.hpp"
 
 UDungeonMainWidget::UDungeonMainWidget(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 }
+
+auto GetUnitMenuContext = interactionContextLens
+	| unreal_alternative_pipeline<FUnitMenu>;
+
+auto GetUnitIdFromContext = GetUnitMenuContext 
+	| map_opt(attr(&FUnitMenu::unitId))
+	| value_or(-1);
+
+auto GetMapWidth = attr(&FDungeonWorldState::map) | attr( &FDungeonLogicMap::Width );
+auto GetMapHeight = attr(&FDungeonWorldState::map) | attr( &FDungeonLogicMap::Height );
+
+template<typename T>
+struct FTypeOps 
+{
+	static bool IsEqual(const FName& name)
+	{
+		return T::StaticStruct()->GetFName() == name;
+	}
+
+	static FName TypeName() { return T::StaticStruct()->GetFName(); }
+};
+
+struct HiddenWidget
+{
+	TWeakObjectPtr<UWidget> managedWidget;
+
+	HiddenWidget(const TWeakObjectPtr<UWidget>& ManagedWidget)
+		: managedWidget(ManagedWidget)
+	{
+		managedWidget->SetVisibility(ESlateVisibility::Collapsed);
+	}
+
+	~HiddenWidget(){
+		managedWidget->SetVisibility(ESlateVisibility::Visible);
+	}
+};
 
 struct FDungeonWidgetContextHandler
 {
@@ -21,14 +59,36 @@ struct FDungeonWidgetContextHandler
 
 	template <typename TFrom,typename TTo>
 	void operator()(TFrom l, TTo r){
-		if constexpr (TIsSame<TFrom, FUnitMenu>::Value)
-		{
-			dungeonWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Collapsed);
-		}
-		else if constexpr (TIsSame<TTo, FUnitMenu>::Value)
+		if constexpr (TIsSame<TTo, FUnitMenu>::Value)
 		{
 			dungeonWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Visible);
-			dungeonWidget->Move->SetFocus();
+
+			// { dungeonWidget->Attack, dungeonWidget->Wait, dungeonWidget->Move };
+			dungeonWidget->Move->SetVisibility(ESlateVisibility::Visible);
+
+			if(r.deactivatedAbilities.Contains("MoveAction")){
+				dungeonWidget->Move->SetVisibility(ESlateVisibility::Collapsed);
+			}
+
+			if(dungeonWidget->notApplicable["CombatAction"]())
+			{
+				dungeonWidget->Attack->SetVisibility(ESlateVisibility::Collapsed);
+			}
+			else
+			{
+				dungeonWidget->Attack->SetVisibility(ESlateVisibility::Visible);
+			}
+			
+			auto firstSlot = Algo::FindByPredicate(dungeonWidget->UnitActionMenu->GetSlots(),[](UPanelSlot* slot)
+			{
+				return slot->Content->IsVisible();
+			});
+			
+			(*firstSlot)->Content->SetFocus();
+		}
+		else if constexpr (TIsSame<TFrom, FUnitMenu>::Value)
+		{
+			dungeonWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Collapsed);
 		}
 		else if constexpr (TIsSame<TFrom, FMainMenu>::Value)
 		{
@@ -87,30 +147,50 @@ bool UDungeonMainWidget::Initialize()
 	Move->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnMoveClicked);
 	Attack->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnAttackClicked);
 	Wait->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnWaitClicked);
+
+	notApplicable.Add(FName("CombatAction"), [&]
+	{
+		int unitId = UseViewState(GetUnitIdFromContext);
+		auto unitData = *UseViewState(unitDataLens(unitId));
+		const auto& state = UseViewState(SimpleCastTo<FDungeonWorldState>);
+		auto cursorPosition = UseViewState(attr(&FDungeonWorldState::CursorPosition));
+
+		auto points = manhattanReachablePoints(
+			state.map.Width,
+			state.map.Height,
+			unitData.attackRange,
+			cursorPosition);
+
+		for (FIntPoint Point : points)
+		{
+			const auto& possibleUnit = UseViewState(getUnitAtPointLens(Point));
+			if (possibleUnit.IsSet() && UseViewState(unitDataLens(*possibleUnit))->teamId != unitData.teamId)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	});
 	
 	return true;
 }
-
-auto GetUnitIdFromContext =
-	interactionContextLens
-	| unreal_alternative_pipeline<FUnitMenu>
-	| map_opt(attr(&FUnitMenu::unitId))
-	| value_or(-1);
 
 void UDungeonMainWidget::OnMoveClicked()
 {
 	int ViewState = UseViewState(GetUnitIdFromContext);
 	StoreDispatch(TDungeonAction(
-		TInPlaceType<FInteractAction>{},
+		TInPlaceType<FSteppedAction>{},
 		TStepAction(TInPlaceType<FMoveAction>{}, ViewState),
-		TArray{TInteractionContext(TInPlaceType<FSelectingUnitAbilityTarget>{})}
-	));
+		TArray{
+			TInteractionContext(TInPlaceType<FSelectingUnitAbilityTarget>{})
+		}));
 }
 
 void UDungeonMainWidget::OnAttackClicked()
 {
 	StoreDispatch(TDungeonAction(
-		TInPlaceType<FInteractAction>{},
+		TInPlaceType<FSteppedAction>{},
 		TStepAction(TInPlaceType<FCombatAction>{}, UseViewState(GetUnitIdFromContext)),
 		TArray{
 			TInteractionContext(TInPlaceType<FUnitInteraction>{}),

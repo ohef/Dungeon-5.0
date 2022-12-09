@@ -41,7 +41,8 @@ public:
 
   virtual void DoSubmit();
   void TickOuterCircle(float DeltaTime);
-  void Begin( TDelegate<void(TOptional<FInteractionResults>)> interactionEnd );
+  void Begin( TDelegate<void(TOptional<FInteractionResults>)> OnInteractionEnded, FVector worldLocationUnderFocus );
+  
   TArray<FIntervalPriority> handlers;
   
 public:

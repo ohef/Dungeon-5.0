@@ -47,14 +47,18 @@ void USingleSubmitHandler::BeginPlay()
   this->SetComponentTickEnabled(false);
 }
 
-void USingleSubmitHandler::Begin(TDelegate<void(TOptional<FInteractionResults>)> interactionEndd)
+void USingleSubmitHandler::Begin(
+  TDelegate<void(TOptional<FInteractionResults>)> interactionEndd,
+  FVector _focusWorldLocation
+  )
 {
-  focusWorldLocation = TilePositionToWorldPoint({2, 2});
+  focusWorldLocation = _focusWorldLocation;
+  interactionEnd = interactionEndd;
 
   // TODO: allow for updating this?
-  // totalLength = 3.;
-  // pivot = 1.5;
-  // fallOffsFromPivot = {0.3f};
+  totalLength = 1.0;
+  pivot = 0.5;
+  fallOffsFromPivot = {0.1f, .2f, .3f};
   
   int orderi = 1;
   handlers.Empty();
@@ -69,9 +73,6 @@ void USingleSubmitHandler::Begin(TDelegate<void(TOptional<FInteractionResults>)>
   timeline.Play();
 
   HandlerWidget->RenderProperties(handlers, timeline.GetTimelineLength(), timeline.GetPlaybackPosition());
-  HandlerWidget->SetVisibility(ESlateVisibility::Visible);
-  
-  interactionEnd = interactionEndd;
   this->SetComponentTickEnabled(true);
 }
 

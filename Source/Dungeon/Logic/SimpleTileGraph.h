@@ -17,9 +17,9 @@ public:
   typedef FIntPoint FNodeRef;
 
   TSet<FNodeRef> invalidMask;
-  int32 maxPathLength;
+  uint32 maxPathLength;
 
-  FSimpleTileGraph(const FDungeonLogicMap& Map, int32 MaxPathLength = 99999,
+  FSimpleTileGraph(const FDungeonLogicMap& Map, uint32 MaxPathLength = 99999,
                    const TSet<FNodeRef>& InvalidMask = TSet<FNodeRef>())
     : Map(Map),
       invalidMask(InvalidMask),
@@ -34,7 +34,8 @@ public:
 
   bool IsValidRef(FNodeRef NodeRef) const
   {
-    return Map.tileAssignment.Contains(NodeRef) && !invalidMask.Contains(NodeRef);
+    // return Map.tileAssignment.Contains(NodeRef) && !invalidMask.Contains(NodeRef);
+    return true;
   };
 
   FNodeRef GetNeighbour(const FNodeRef NodeRef, const int32 NeighbourIndex) const
@@ -54,7 +55,7 @@ public:
 
   float GetTraversalCost(const FNodeRef StartNodeRef, const FNodeRef EndNodeRef) const
   {
-    return 1.0;
+    return (FNodeRef(EndNodeRef) - StartNodeRef).Size();
   }
 
   bool IsTraversalAllowed(const FNodeRef NodeA, const FNodeRef NodeB) const
@@ -62,11 +63,8 @@ public:
     return true;
   }
 
-  int32 GetMaxSearchNodes(uint32 NodeCount) const
-  {
-    return maxPathLength;
-  }
-
+  float GetCostLimit() const {return maxPathLength;}
+  
   bool WantsPartialSolution() const
   {
     return true;

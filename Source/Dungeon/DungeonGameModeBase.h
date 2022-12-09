@@ -71,7 +71,7 @@ FText Get##managedPointer####fieldName() const \
 }
 
 UCLASS()
-class DUNGEON_API ADungeonGameModeBase : public AGameModeBase //, public TSharedFromThis<ADungeonGameModeBase>
+class DUNGEON_API ADungeonGameModeBase : public AGameModeBase, public FStoreConnectedClass<ADungeonGameModeBase, TDungeonAction>
 {
   GENERATED_BODY()
 
@@ -116,8 +116,6 @@ public:
   FTextBlockStyle style;
   TSubclassOf<UDungeonMainWidget> MainWidgetClass;
   TQueue<TUniquePtr<FTimeline>> AnimationQueue;
-  // using TStoreAction = THistoryAction<TAction>;
-  // using TModelType = FHistoryModel<FDungeonWorldState>;
   TUniquePtr<TDungeonStore> store;
   lager::reader<TInteractionContext> interactionReader;
 
@@ -154,6 +152,4 @@ public:
 
     this->AnimationQueue.Enqueue(MoveTemp(timeline));
   }
-
-  AMapCursorPawn* GetMapCursorPawn();
 };

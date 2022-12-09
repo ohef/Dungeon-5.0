@@ -64,6 +64,8 @@ const auto getUnitAtPointLens = [](const FIntPoint& pt)
     | Find(pt);
 };
 
+const auto cursorPositionLens = attr(&FDungeonWorldState::CursorPosition);
+
 const auto unitIdToPosition = [](int unitId)
 {
   using unitAssign_t = GET_TYPE_OF(&FDungeonLogicMap::unitAssignment);
