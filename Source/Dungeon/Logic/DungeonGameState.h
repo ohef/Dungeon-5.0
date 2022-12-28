@@ -82,12 +82,17 @@ struct FUnitMenu
   TSet<FName> deactivatedAbilities;
 };
 
+enum EAbilityId
+{
+  IdMove = 1,
+  IdAttack,
+};
+
 USTRUCT()
 struct FSelectingUnitAbilityTarget
 {
   GENERATED_BODY()
   
-  int unitId;
   int abilityId;
 };
 

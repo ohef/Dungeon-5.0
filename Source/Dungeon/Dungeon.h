@@ -24,7 +24,7 @@ struct TIsInTypeUnion
 template <typename T>
 constexpr bool isInGuiControlledState()
 {
-	return TIsInTypeUnion<T, FMainMenu, FUnitMenu, FUnitInteraction>::Value;
+	return TIsInTypeUnion<typename TDecay<T>::Type, FMainMenu, FUnitMenu, FUnitInteraction>::Value;
 }
 
 template <class... Ts>

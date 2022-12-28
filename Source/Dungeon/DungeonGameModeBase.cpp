@@ -36,8 +36,6 @@ ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectIniti
 	UnitTable->RowStruct = FDungeonLogicUnit::StaticStruct();
 }
 
-
-
 #define DUNGEON_MOVE_LAMBDA(_x) _x = MoveTemp(_x)
 
 auto WithGlobalEventMiddleware(const ADungeonGameModeBase& gameMode)
@@ -139,7 +137,7 @@ void ADungeonGameModeBase::BeginPlay()
 
 	for (auto UnitIdToActor : static_cast<const FDungeonWorldState>(store->get()).unitIdToActor)
 	{
-		UnitIdToActor.Value->hookIntoStore();
+		UnitIdToActor.Value->HookIntoStore();
 	}
 
 	FString Result;

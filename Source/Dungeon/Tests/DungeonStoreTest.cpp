@@ -6,8 +6,12 @@
 #include "DungeonUnitActor.h"
 #include "Containers/UnrealString.h"
 #include "lager/event_loop/manual.hpp"
+#include "Logic/StateQueries.hpp"
 #include "Misc/AutomationTest.h"
 #include "Serialization/Csv/CsvParser.h"
+#include "zug/run.hpp"
+#include "zug/transducer/cycle.hpp"
+#include "zug/transducer/range.hpp"
 
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -81,13 +85,6 @@ bool FDungeonStoreTest::RunTest(const FString& Parameters)
 		store->dispatch(TDungeonAction(TInPlaceType<FCursorPositionUpdated>{}, FIntPoint{1,4}));
 		store->dispatch(TDungeonAction(TInPlaceType<FCursorQueryTarget>{}, FIntPoint{1,4}));
 
-		auto GetUnitMenuContext = interactionContextLens
-			| unreal_alternative_pipeline<FUnitMenu>;
-
-		auto GetUnitIdFromContext = GetUnitMenuContext
-			| map_opt(attr(&FUnitMenu::unitId))
-			| value_or(-1);
-
 		int ViewState = lager::view(GetUnitIdFromContext,store->get());
 		store->dispatch(
 		TDungeonAction(
@@ -110,6 +107,34 @@ bool FDungeonStoreTest::RunTest(const FString& Parameters)
 		
 		TestTrue("Should be in SelectingUnitAbilityTarget",
 			store->zoom(interactionContextLens).make().get().IsType<FSelectingUnitAbilityTarget>());
+	}
+
+	{
+		FDungeonWorldState modell;
+		modell.CursorPosition = {1,2};
+		modell.map.Width = 10;
+		modell.map.Height = 10;
+		modell.map.unitAssignment.Add({1,2}, 1);
+		modell.map.unitAssignment.Add({0,2}, 2);
+		modell.map.unitAssignment.Add({2,2}, 3);
+		
+		auto attackingUnit = FDungeonLogicUnit(1, 2, 13, Free, "67", 8, 2, 1);
+		auto targetedUnit = FDungeonLogicUnit(2, 2, 13, Free, "67", 8, 1, 1);
+		
+		modell.map.loadedUnits.Add(1, attackingUnit);
+		modell.map.loadedUnits.Add(2, targetedUnit);
+		modell.map.loadedUnits.Add(3, FDungeonLogicUnit(3, 2, 13, Free, "67", 8, 1, 1));
+	
+		auto result = GetInteractablePositions(modell);
+		
+		TestTrue("Should be 2", result.Num() == 2 );
+
+		TArray<FIntPoint> IntPoints = zug::unreal::into(TArray<FIntPoint>{}, zug::identity, result);
+		auto cycler = TCycleArrayIterator(IntPoints);
+
+		TestTrue("Starts at 0", cycler.Current() == IntPoints[0]);
+		TestTrue("Should be 2", cycler.Forward() == IntPoints[1]);
+		TestTrue("Should be 2", cycler.Forward() == IntPoints[0]);
 	}
 	
 	return true;

@@ -80,16 +80,32 @@ struct unreal_alternative_t : zug::detail::pipeable
 template <typename T>
 inline auto unreal_alternative = unreal_alternative_t<T>{};
 
+template<typename T>
+struct GetDerefValueType;
+
+template<typename T>
+struct GetDerefValueType<TOptional<T>>
+{
+	typedef T Type ;
+};
+
+template<typename T>
+struct GetDerefValueType<TUniquePtr<T>>
+{
+	typedef T Type ;
+};
+;
+
 constexpr auto deref =
 	zug::comp([](auto&& f)
 	{
 		return [&, f = LAGER_FWD(f)](auto&& p)
 		{
-			return f(LAGER_FWD(*p))
+			return f(*LAGER_FWD(p))
 			([&](auto&& x)
 			{
 				*p = LAGER_FWD(x);
-				return p;
+				return LAGER_FWD(p);
 			});
 		};
 	});

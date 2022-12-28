@@ -13,7 +13,8 @@
 #include "Dungeon/DungeonGameModeBase.h"
 #include "Dungeon/Lenses/model.hpp"
 #include "GameFramework/SpringArmComponent.h"
-#include "Utility/HookFunctor.hpp"
+#include "Logic/StateQueries.hpp"
+#include "zug/transducer/cycle.hpp"
 
 AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -26,7 +27,6 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
   Offset->SetWorldLocation({0, 0, 0});
   CursorMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CursorGraphic"));
   CursorMesh->SetupAttachment(Offset);
-  // CursorMesh->SetRelativeLocation({50, 50, 0});
 
   SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("USpringArmComponent"));
   SpringArmComponent->SetupAttachment(CursorCollider);
@@ -65,7 +65,16 @@ void AMapCursorPawn::BeginPlay()
   {
     if (variant.IsType<FBackAction>())
     {
+      cycler = TCycleArrayIterator<FIntPoint>();
       RootComponent->SetWorldLocation(TilePositionToWorldPoint(UseViewState(cursorPositionLens)));
+    }
+
+    if (variant.IsType<FChangeState>()
+      && variant.Get<FChangeState>().newState.IsType<FSelectingUnitAbilityTarget>()
+      && variant.Get<FChangeState>().newState.Get<FSelectingUnitAbilityTarget>().abilityId == EAbilityId::IdAttack)
+    {
+      TSet<FIntPoint> IntPoints = GetInteractablePositions(reader.get());
+      cycler = TCycleArrayIterator(zug::unreal::into(TArray<FIntPoint>{}, zug::identity, IntPoints));
     }
   });
   
@@ -75,7 +84,8 @@ void AMapCursorPawn::BeginPlay()
     Visit(lager::visitor{
             [&](auto context)
             {
-              if constexpr (isInGuiControlledState<decltype(context)>())
+              using TContext = decltype(context);
+              if constexpr (isInGuiControlledState<TContext>())
               {
                 MovementComponent->SetActive(false);
               }
@@ -125,12 +135,20 @@ inline FVector4 AMapCursorPawn::ConvertInputToCameraPlaneInput(FVector inputVect
 
 void AMapCursorPawn::MoveRight(float Value)
 {
-  AddMovementInput(ConvertInputToCameraPlaneInput(FVector{Value, 0.0, 0.0}));
+  auto context = UseViewState(interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(attr( &FSelectingUnitAbilityTarget::abilityId)) );
+  if (!(context.has_value() && context.value() == EAbilityId::IdAttack ))
+  {
+    AddMovementInput(ConvertInputToCameraPlaneInput(FVector{Value, 0.0, 0.0}));
+  }
 }
 
 void AMapCursorPawn::MoveUp(float Value)
 {
-  AddMovementInput(ConvertInputToCameraPlaneInput(FVector{0.0, Value, 0.0}));
+  auto context = UseViewState(interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(attr( &FSelectingUnitAbilityTarget::abilityId)) );
+  if (!(context.has_value() && context.value() == EAbilityId::IdAttack ))
+  {
+    AddMovementInput(ConvertInputToCameraPlaneInput(FVector{0.0, Value, 0.0}));
+  }
 }
 
 void AMapCursorPawn::RotateCamera(float Value)
@@ -152,10 +170,41 @@ void AMapCursorPawn::Query()
   StoreDispatch(TDungeonAction(TInPlaceType<FCursorQueryTarget>{}, CurrentPosition));
 }
 
+void AMapCursorPawn::Next()
+{
+  auto context = UseViewState(interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(attr( &FSelectingUnitAbilityTarget::abilityId)) );
+  if (context.has_value() && context.value() == EAbilityId::IdAttack )
+  {
+    TOptional<FIntPoint> maybeIntPoint = cycler.Current();
+    if(maybeIntPoint.IsSet())
+    {
+      RootComponent->SetWorldLocation(TilePositionToWorldPoint(*maybeIntPoint));
+    }
+    cycler.Forward();
+  }
+}
+
+void AMapCursorPawn::Previous()
+{
+  auto context = UseViewState(interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(attr( &FSelectingUnitAbilityTarget::abilityId)) );
+  if (context.has_value() && context.value() == EAbilityId::IdAttack )
+  {
+    TOptional<FIntPoint> maybeIntPoint = cycler.Current();
+    if(maybeIntPoint.IsSet())
+    {
+      RootComponent->SetWorldLocation(TilePositionToWorldPoint(*maybeIntPoint));
+    }
+    cycler.Backwards();
+  }
+}
+
 void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
   Super::SetupPlayerInputComponent(PlayerInputComponent);
 
+  PlayerInputComponent->BindAction("Next", EInputEvent::IE_Pressed , this, &AMapCursorPawn::Next).bConsumeInput = false;
+  PlayerInputComponent->BindAction("Previous", EInputEvent::IE_Pressed , this, &AMapCursorPawn::Previous).bConsumeInput = false;
+  
   PlayerInputComponent->BindAxis(GMoveRight, this, &AMapCursorPawn::MoveRight);
   PlayerInputComponent->BindAxis(GMoveUp, this, &AMapCursorPawn::MoveUp);
   PlayerInputComponent->BindAxis(GCameraRotate, this, &AMapCursorPawn::RotateCamera);

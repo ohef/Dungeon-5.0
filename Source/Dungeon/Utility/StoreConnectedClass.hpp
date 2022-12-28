@@ -26,6 +26,18 @@ struct FStoreConnectedClass
     ->zoom(SimpleCastTo<FDungeonWorldState> | lens);
   }
   
+  decltype(auto) UseStoreNode() {
+    return static_cast<TThis*>(this)
+    ->GetWorld()
+    ->template GetAuthGameMode<ADungeonGameModeBase>()
+    ->store
+    ->zoom(SimpleCastTo<FDungeonWorldState>);
+  }
+  
+  decltype(auto) UseViewState() {
+    return UseViewState(SimpleCastTo<FDungeonWorldState>);
+  }
+  
   decltype(auto) UseViewState(auto&& lens) {
     return lager::view(SimpleCastTo<FDungeonWorldState> | lens, static_cast<TThis*>(this)
     ->GetWorld()

@@ -12,10 +12,14 @@
 #include "Widget/DamageWidget.h"
 #include "DungeonUnitActor.generated.h"
 
+struct FDungeonUnitActorHandler;
+
 UCLASS()
 class DUNGEON_API ADungeonUnitActor : public AActor, public FStoreConnectedClass<ADungeonUnitActor, TDungeonAction>
 {
   GENERATED_BODY()
+
+  friend FDungeonUnitActorHandler;
   
 public:
   // Sets default values for this actor's properties
@@ -29,20 +33,24 @@ public:
   
   int id;
   FIntPoint lastPosition;
+  
   using FReaderType = std::tuple<FDungeonLogicUnit, FIntPoint, TOptional<int>>;
   lager::reader<FReaderType> reader;
-  void hookIntoStore();
+  lager::reader<TTuple<FIntPoint, FIntPoint>> wew;
+  
+  void HookIntoStore();
   void HandleGlobalEvent(const TDungeonAction& action);
   
   UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")
   void React(FDungeonLogicUnit updatedState);
   
+  UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")
+  void ReactCombatAction(FCombatAction updatedState);
+  
   UPROPERTY(EditAnywhere,BlueprintReadWrite)
   UInterpToMovementComponent* InterpToMovementComponent;
-  
   UPROPERTY(EditAnywhere,BlueprintReadWrite)
   USceneComponent* PathRotation;
-  
   UPROPERTY(Transient)
   TSubclassOf<UDamageWidget> DamageWidgetClass;
   UPROPERTY(Transient)

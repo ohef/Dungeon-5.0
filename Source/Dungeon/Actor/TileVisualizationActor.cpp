@@ -22,16 +22,6 @@ struct FContextHandler
 {
 	TWeakObjectPtr<ATileVisualizationActor> owner;
 	
-	// template <class Tx>
-	// void handle(FSelectingUnitContext previouss, Tx nextt)
-	// {
-	// }
-	//
-	// template <class Tx>
-	// void handle(Tx previouss, FSelectingUnitContext nextt)
-	// {
-	// }
-
 	void handle(FSelectingUnitContext previouss, FSelectingUnitContext nextt)
 	{
 		if (!owner.IsValid() || owner->TileVisualizationComponent == nullptr)

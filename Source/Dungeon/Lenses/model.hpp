@@ -85,6 +85,13 @@ const auto unitIdToPosition = [](int unitId)
       });
 };
 
+const auto unitIdToActor = [](int unitId)
+{
+  return SimpleCastTo<FDungeonWorldState>
+             | attr(&FDungeonWorldState::unitIdToActor) 
+             | Find(unitId);
+};
+
 const auto unitDataLens = [](int id)
 {
   return attr(&FDungeonWorldState::map)
@@ -100,10 +107,12 @@ const auto thisUnitLens = [](int id)
 const auto getUnitUnderCursor =
   lager::lenses::getset([&](const FDungeonWorldState& m) -> TOptional<FDungeonLogicUnit> 
                         {
-                          TOptional<int> v = lager::view(interactionContextLens
-                                                         | unreal_alternative_pipeline<FSelectingUnitContext>
-                                                         | map_opt(attr(&FSelectingUnitContext::unitUnderCursor))
-                                                         | or_default, m);
+                          TOptional<int> v = lager::view(getUnitAtPointLens(lager::view(cursorPositionLens, m)), m);
+                            // interactionContextLens
+                            //                              | unreal_alternative_pipeline<FSelectingUnitContext>
+                            //                              | map_opt(attr(&FSelectingUnitContext::unitUnderCursor))
+                            //                              | or_default
+                                                         // , m);
                           if(!v.IsSet())
                             return {};
 

@@ -15,6 +15,7 @@
 #include "lager/reader.hpp"
 #include "Logic/DungeonGameState.h"
 #include "Utility/StoreConnectedClass.hpp"
+#include "zug/transducer/cycle.hpp"
 #include "MapCursorPawn.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCursorEvent, FIntPoint);
@@ -24,6 +25,67 @@ struct ZoomLevelNode
 {
   int ZoomLevel;
   ZoomLevelNode* NextNode;
+};
+
+template <typename TElement>
+struct TCycleArrayIterator
+{
+  TArray<TElement> iteratee;
+  
+  TCycleArrayIterator()
+  {
+  }
+
+  bool CanCycle(){
+    return !iteratee.IsEmpty();
+  }
+
+  TCycleArrayIterator(TArray<TElement> Iteratee)
+    : iteratee(Iteratee)
+  {
+    previousIndex = iteratee.Num() - 1;
+    currentIndex = 0;
+  }
+
+  decltype(auto) Forward()
+  {
+    previousIndex = currentIndex;
+    currentIndex++;
+    
+    if (!iteratee.IsValidIndex(currentIndex))
+      currentIndex = 0;
+    
+    return Current();
+  }
+
+  decltype(auto) Backwards()
+  {
+    previousIndex = currentIndex;
+    currentIndex--;
+    if (!iteratee.IsValidIndex(currentIndex))
+      currentIndex = iteratee.Num() - 1;
+    
+    return Current();
+  }
+
+  int previousIndex;
+  int currentIndex;
+
+  TOptional<TElement> Current() 
+  {
+    if(iteratee.IsEmpty())
+      return {};
+    
+    return { iteratee[previousIndex] };
+  }
+  
+  TOptional<TElement> Previous() 
+  {
+    if(iteratee.IsEmpty())
+      return {};
+      
+    return { iteratee[previousIndex] };
+  }
 };
 
 UCLASS()
@@ -41,10 +103,16 @@ protected:
   void MoveUp(float Value);
   void RotateCamera(float Value);
   void Query();
+  void Next();
+  void Previous();
 
   TArray<ZoomLevelNode> storedZoomLevels;
   float previousZoom;
   ZoomLevelNode* currentZoom;
+  
+  TSet<FIntPoint> interactionPoints;
+
+  TCycleArrayIterator<FIntPoint> cycler;
   
 public:
   void CycleZoom();

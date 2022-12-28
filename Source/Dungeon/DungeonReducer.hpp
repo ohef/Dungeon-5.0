@@ -79,7 +79,6 @@ inline void UpdateInteractionContext(FDungeonWorldState& worldState, T& Value)
 inline void UpdateInteractionContext(FDungeonWorldState& Model, FUnitInteraction& Value)
 {
 	const auto DungeonView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
-
 	auto possibleTarget = DungeonView(getUnitAtPointLens(DungeonView(cursorPositionLens)));
 	Value.targetIDUnderFocus = *possibleTarget;
 
@@ -97,9 +96,9 @@ inline void UpdateInteractionContext(FDungeonWorldState& worldState, TInteractio
 FDungeonReducerResult AddInChangeStateEffect(auto& Model, auto&& ...values)
 {
 	return {
-		Model, [&](const auto& ctx)
+		Model, [=](const auto& ctx)
 		{
-			ctx.dispatch(TDungeonAction(TInPlaceType<FChangeState>{}, Forward<decltype(values)>(values)...));
+			ctx.dispatch(TDungeonAction(TInPlaceType<FChangeState>{}, values...));
 		}
 	};
 }
@@ -136,6 +135,7 @@ struct FCursorPositionUpdatedHandler : public TVariantVisitor<void, TInteraction
 inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction) -> FDungeonReducerResult
 {
 	const auto DungeonView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
+	const auto DefaultPassthrough = [&](auto& action) -> FDungeonReducerResult { return {Model, lager::noop}; };
 
 	return Visit(TDungeonVisitor
 	             {
@@ -171,10 +171,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 						                          }
 					                          };
 				                          },
-				                          [&](auto) -> FDungeonReducerResult
-				                          {
-					                          return {Model, lager::noop};
-				                          }
+				                          DefaultPassthrough
 			                          }, Model.WaitingForResolution);
 		             },
 		             [&](FCursorQueryTarget& actionTarget) -> FDungeonReducerResult
@@ -195,11 +192,19 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 								                                       return {Model, lager::noop};
 
 							                                       waitingAction.Destination = actionTarget.target;
+							                                       // Model.InteractionsToResolve.Pop();
 							                                       return {
 								                                       Model,
-								                                       [waitingAction = MoveTemp(waitingAction)](
-								                                       auto ctx)
+								                                       [waitingAction = MoveTemp(waitingAction)](auto ctx)
 								                                       {
+									                                       ctx.dispatch(
+										                                       TDungeonAction(
+											                                       TInPlaceType<FChangeState>{},
+											                                       TInteractionContext(
+												                                       TInPlaceType<FUnitMenu>{},
+												                                       waitingAction.InitiatorId,
+												                                       TSet<FName>({"MoveAction"})))
+									                                       );
 									                                       ctx.dispatch(TDungeonAction(
 										                                       TInPlaceType<FMoveAction>{},
 										                                       waitingAction));
@@ -234,16 +239,30 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 								                                       waitingAction.updatedUnit = targetedUnit.
 									                                       GetValue();
 								                                       Model.InteractionsToResolve.Pop();
-								                                       UpdateInteractionContext(
-									                                       Model, Model.InteractionsToResolve.Top());
+							                                       	
+								                                       auto val = Model.InteractionsToResolve.Top().
+									                                       TryGet<FUnitInteraction>();
+								                                       val->originatorID = waitingAction.InitiatorId;
+								                                       auto possibleTarget = DungeonView(
+									                                       getUnitAtPointLens(
+										                                       DungeonView(cursorPositionLens)));
+								                                       val->targetIDUnderFocus = *possibleTarget;
+
+								                                       return {
+									                                       Model,
+									                                       [interaction = Model.InteractionsToResolve.Top()](auto ctx)
+									                                       {
+										                                       ctx.dispatch(
+											                                       TDungeonAction(
+												                                       TInPlaceType<FChangeState>{},
+												                                       interaction));
+									                                       }
+								                                       };
 							                                       }
 
-							                                       return {Model, lager::noop};
+							                                       return DefaultPassthrough(waitingAction);
 						                                       },
-						                                       [&](auto) -> FDungeonReducerResult
-						                                       {
-							                                       return {Model, lager::noop};
-						                                       }
+						                                       DefaultPassthrough
 					                                       }, Model.WaitingForResolution);
 				                          },
 				                          [&](FSelectingUnitContext&) -> FDungeonReducerResult
@@ -283,10 +302,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 						                          return {Model, lager::noop};
 					                          }
 				                          },
-				                          [&](auto&) -> FDungeonReducerResult
-				                          {
-					                          return {Model, lager::noop};
-				                          }
+				                          DefaultPassthrough 
 			                          }, Model.InteractionContext);
 		             },
 		             [&](FSteppedAction& action) -> FDungeonReducerResult
@@ -335,17 +351,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 			             DungeonLogicMap.unitAssignment.
 			                             Add(MoveAction.Destination, MoveAction.InitiatorId);
 
-			             return {
-				             Model, [MoveAction](const auto& ctx)
-				             {
-					             ctx.dispatch(
-						             TDungeonAction(TInPlaceType<FChangeState>{},
-						                            TInteractionContext(
-							                            TInPlaceType<FUnitMenu>{}, MoveAction.InitiatorId,
-							                            TSet<FName>({"MoveAction"})))
-					             );
-				             }
-			             };
+			             return { Model, lager::noop };
 		             },
 		             [&](FCombatAction& action) -> FDungeonReducerResult
 		             {
@@ -365,10 +371,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				             }
 			             };
 		             },
-		             [&](auto& action) -> FDungeonReducerResult
-		             {
-			             return {Model, lager::noop};
-		             },
+		             DefaultPassthrough
 	             }, worldAction);
 };
 
@@ -403,7 +406,7 @@ const auto WithUndoReducer = [](auto&& reducer)
 
 				            //TODO: this exists because we want to activate undo on certain actions...probably should be in
 				            //it's own store
-				            if (IsInTypeSet<FCheckPoint>(a))
+				            if (IsInTypeSet<FChangeState>(a))
 				            {
 					            historyModel.AddRecord(historyModel.CurrentState());
 					            historyModel.CurrentState() = childModel;

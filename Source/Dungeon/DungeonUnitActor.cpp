@@ -8,11 +8,13 @@
 #include "GraphAStar.h"
 #include "Algo/ForEach.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "lager/lenses/tuple.hpp"
 #include "Lenses/model.hpp"
 #include "Logic/SimpleTileGraph.h"
 #include "Utility/HookFunctor.hpp"
+#include "zug/detail/lambda_wrapper.hpp"
 
 // Sets default values
 ADungeonUnitActor::ADungeonUnitActor()
@@ -29,11 +31,6 @@ ADungeonUnitActor::ADungeonUnitActor()
 	PathRotation = CreateDefaultSubobject<USceneComponent>(TEXT("PathRotation"));
 	PathRotation->AttachToComponent(this->RootComponent,
 	                                FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
-	
-	// InterpToMovementComponent->UpdatedComponent = this->RootComponent;
-	// InterpToMovementComponent->BehaviourType = EInterpToBehaviourType::PingPong;
-	// InterpToMovementComponent->SetActive(true);
-	// InterpToMovementComponent->SetComponentTickEnabled(true);
 }
 
 // Called when the game starts or when spawned
@@ -49,13 +46,13 @@ void ADungeonUnitActor::BeginPlay()
 	DamageWidget->SetVisibility(ESlateVisibility::Collapsed);
 }
 
-void ADungeonUnitActor::hookIntoStore()
+void ADungeonUnitActor::HookIntoStore()
 {
 	reader = UseState(lager::lenses::fan(thisUnitLens(id), unitIdToPosition(id), isUnitFinishedLens2(id)))
 	.make();
 
 	UseEvent().AddUObject(this, &ADungeonUnitActor::HandleGlobalEvent);
-
+	
 	lastPosition = lager::view(second, reader.get());
 	reader.bind(TPreviousHookFunctor<decltype(reader)::value_type>(
 		reader.get(),
@@ -73,71 +70,115 @@ void ADungeonUnitActor::hookIntoStore()
 		}));
 }
 
-// s
+
+const auto getId = zug::comp([](FDungeonLogicUnit x) { return x.Id; });
+
+template <size_t N>
+const auto getElement = zug::comp([](auto x) { return std::get<N>(x); }); 
+
+struct FDungeonUnitActorHandler
+{
+	ADungeonUnitActor* _this;
+
+	static inline auto getThisId = getId | getElement<0>;
+
+	//Sink function; just does nothing
+	template <typename T>
+	void operator()(T){}
+
+	void operator()(const FChangeState& event)
+	{
+		Visit(*this, event.newState);
+	}
+
+	void operator()(const FCombatAction& event)
+	{
+		auto thisId = getThisId(*_this->reader);
+		
+		if (event.updatedUnit.Id == thisId)
+		{
+			FVector2D ScreenPosition;
+			const FIntPoint& IntPoint = lager::view(second, _this->reader.get());
+			UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+				_this->GetWorld()->GetFirstPlayerController(), TilePositionToWorldPoint(IntPoint),
+				ScreenPosition,
+				false);
+			_this->DamageWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+			_this->DamageWidget->SetRenderTranslation(FVector2D(ScreenPosition));
+			_this->DamageWidget->DamageDone->SetText(FText::AsNumber(event.damageValue));
+			_this->DamageWidget->DamageDone->SetRenderOpacity(1.0);
+			_this->DamageWidget->PlayAnimation(_this->DamageWidget->DamageDissappear.Get());
+		}
+
+		if (event.InitiatorId == thisId)
+		{
+			_this->UseViewState(unitIdToActor(thisId) | ignoreOptional)->ReactCombatAction(event);
+		}
+	}
+
+	void operator()(const FMoveAction& event)
+	{
+		if (getThisId(*_this->reader) == event.InitiatorId)
+		{
+			auto ReaderVal = _this->reader.get();
+			FDungeonLogicUnit DungeonLogicUnit = lager::view(first, ReaderVal);
+			FIntPoint UpdatedPosition = lager::view(second, ReaderVal);
+
+			TArray<FIntPoint> aStarResult;
+			FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph(_this->UseViewState(attr(&FDungeonWorldState::map)),
+			                                                    DungeonLogicUnit.Movement);
+			FGraphAStar aStarGraph(SimpleTileGraph);
+			auto Result = aStarGraph.FindPath(_this->lastPosition, UpdatedPosition, SimpleTileGraph, aStarResult);
+
+			_this->InterpToMovementComponent->ResetControlPoints();
+			_this->InterpToMovementComponent->Duration = aStarResult.Num() / 3.0f;
+			_this->InterpToMovementComponent->AddControlPointPosition(TilePositionToWorldPoint(_this->lastPosition),
+			                                                          false);
+			Algo::ForEach(aStarResult, [&](auto x) mutable
+			{
+				_this->InterpToMovementComponent->AddControlPointPosition(TilePositionToWorldPoint(x), false);
+			});
+			_this->InterpToMovementComponent->FinaliseControlPoints();
+			_this->InterpToMovementComponent->RestartMovement();
+		}
+	}
+
+	void operator()(const FBackAction& event)
+	{
+		_this->SetActorLocation(TilePositionToWorldPoint(_this->reader.zoom(second).make().get()));
+	}
+
+	void operator()(const FUnitInteraction& newState)
+	{
+		FVector Start = TilePositionToWorldPoint(_this->UseViewState(unitIdToPosition(newState.originatorID)));
+		FVector Target = TilePositionToWorldPoint(_this->UseViewState(unitIdToPosition(newState.targetIDUnderFocus)));
+		int thisId = *_this->reader.zoom(first | attr( &FDungeonLogicUnit::Id)).make();
+		
+		if (thisId == newState.originatorID)
+		{
+			FRotator NewRotation = UKismetMathLibrary::FindLookAtRotation(Start, Target);
+			_this->PathRotation->SetWorldRotation(NewRotation);
+		}
+		else if (thisId == newState.targetIDUnderFocus)
+		{
+			FRotator NewRotation = UKismetMathLibrary::FindLookAtRotation(Target, Start);
+			_this->PathRotation->SetWorldRotation(NewRotation);
+		}
+	}
+};
 
 void ADungeonUnitActor::HandleGlobalEvent(const TDungeonAction& action)
 {
-	Visit([this](auto&& event)
-	{
-		using TEventType = typename TDecay<decltype(event)>::Type;
-		if constexpr (TIsSame<FCombatAction, TEventType>::Value)
-		{
-			const FCombatAction& castedEvent = event;
-			if (lager::view(first, reader.get()).Id == castedEvent.updatedUnit.Id)
-			{
-				FVector2D ScreenPosition;
-				const FIntPoint& IntPoint = lager::view(second, this->reader.get());
-				UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
-					this->GetWorld()->GetFirstPlayerController(), TilePositionToWorldPoint(IntPoint),
-					ScreenPosition,
-					false);
-				DamageWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
-				DamageWidget->SetRenderTranslation(FVector2D(ScreenPosition));
-				DamageWidget->DamageDone->SetText(FText::AsNumber(castedEvent.damageValue));
-				DamageWidget->DamageDone->SetRenderOpacity(1.0);
-				DamageWidget->PlayAnimation(DamageWidget->DamageDissappear.Get());
-
-				UKismetSystemLibrary::PrintString(
-					this, "Wow you dealt THIS much damage bro GOOD JOB " + FString::FormatAsNumber(
-						castedEvent.damageValue));
-			}
-		}
-		else if constexpr (TIsSame<FMoveAction, TEventType>::Value)
-		{
-			const FMoveAction& castedEvent = event;
-			if (lager::view(first, reader.get()).Id == castedEvent.InitiatorId)
-			{
-				auto ReaderVal = reader.get();
-				FDungeonLogicUnit DungeonLogicUnit = lager::view(first, ReaderVal);
-				FIntPoint UpdatedPosition = lager::view(second, ReaderVal);
-
-				TArray<FIntPoint> aStarResult;
-				FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph(UseViewState(attr(&FDungeonWorldState::map)),
-				                                                    DungeonLogicUnit.Movement);
-				FGraphAStar aStarGraph(SimpleTileGraph);
-				auto Result = aStarGraph.FindPath(lastPosition, UpdatedPosition, SimpleTileGraph, aStarResult);
-
-				InterpToMovementComponent->ResetControlPoints();
-				InterpToMovementComponent->Duration = aStarResult.Num() / 3.0f;
-				InterpToMovementComponent->AddControlPointPosition(TilePositionToWorldPoint(lastPosition), false);
-				Algo::ForEach(aStarResult, [&](auto x) mutable
-				{
-					InterpToMovementComponent->AddControlPointPosition(TilePositionToWorldPoint(x), false);
-				});
-				InterpToMovementComponent->FinaliseControlPoints();
-				InterpToMovementComponent->RestartMovement();
-			}
-		}
-		else if constexpr (TIsSame<FBackAction, TEventType>::Value) {
-			SetActorLocation(TilePositionToWorldPoint(reader.zoom(second).make().get()));
-		}
-	}, action);
+	Visit(FDungeonUnitActorHandler{this}, action);
 }
 
 // Called every frame
 void ADungeonUnitActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	
-	PathRotation->SetWorldRotation(InterpToMovementComponent->Velocity.ToOrientationRotator());
+
+	if (InterpToMovementComponent->Velocity.Length() > 0)
+	{
+		PathRotation->SetWorldRotation(InterpToMovementComponent->Velocity.ToOrientationRotator());
+	}
 }
