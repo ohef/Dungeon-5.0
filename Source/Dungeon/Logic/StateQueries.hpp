@@ -38,4 +38,3 @@ const auto GetInteractablePositions = [](const FDungeonWorldState& Model)
 
 	return zug::unreal::into(TSet<FIntPoint>(), xf, points);
 };
-

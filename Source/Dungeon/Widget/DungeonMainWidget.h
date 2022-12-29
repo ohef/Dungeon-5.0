@@ -63,9 +63,17 @@ public:
   TWeakObjectPtr<UTurnNotifierWidget> TurnNotifierWidget;
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   ESlateVisibility MapMenuVisibility;
+
+  TArray<TFunction<void()>> contextUpdates;
   
   UFUNCTION()
   void OnEndTurnClicked();
+
+  void OnFocusChanged(const FFocusEvent& FocusEvent,
+                      const FWeakWidgetPath& OldFocusedWidgetPath,
+                      const TSharedPtr<SWidget>& OldFocusedWidget,
+                      const FWidgetPath& NewFocusedWidgetPath,
+                      const TSharedPtr<SWidget>& NewFocusedWidget);
   
   lager::reader<TInteractionContext> contextCursor;
   lager::reader<int> turnStateReader;

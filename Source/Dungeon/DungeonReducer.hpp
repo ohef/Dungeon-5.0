@@ -9,14 +9,14 @@
 #include "Utility/VariantVisitor.hpp"
 
 inline auto GetInteractionFields(FDungeonWorldState Model,
-                                 int unitIdUnderCursor) -> TTuple<TSet<FIntPoint>, TSet<FIntPoint>>
+                                 int unitId) -> TTuple<TSet<FIntPoint>, TSet<FIntPoint>>
 {
-	auto foundUnitLogic = *lager::view(unitDataLens(unitIdUnderCursor), Model);
-	auto unitsPosition = lager::view(unitIdToPosition(unitIdUnderCursor), Model);
+	auto foundUnitLogic = *lager::view(unitDataLens(unitId), Model);
+	auto unitsPosition = lager::view(unitIdToPosition(unitId), Model);
 
 	TSet<FIntPoint> points;
 
-	bool unitCanTakeAction = !lager::view(isUnitFinishedLens2(unitIdUnderCursor), Model).IsSet();
+	bool unitCanTakeAction = !lager::view(isUnitFinishedLens2(unitId), Model).IsSet();
 	int interactionDistance = foundUnitLogic.Movement + foundUnitLogic.attackRange;
 
 	if (unitCanTakeAction)
@@ -135,7 +135,7 @@ struct FCursorPositionUpdatedHandler : public TVariantVisitor<void, TInteraction
 inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction) -> FDungeonReducerResult
 {
 	const auto DungeonView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
-	const auto DefaultPassthrough = [&](auto& action) -> FDungeonReducerResult { return {Model, lager::noop}; };
+	const auto DefaultPassthrough = [&](auto) -> FDungeonReducerResult { return {Model, lager::noop}; };
 
 	return Visit(TDungeonVisitor
 	             {
@@ -370,6 +370,10 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					             ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
 				             }
 			             };
+		             },
+		             [&](FFocusChanged& action) -> FDungeonReducerResult {
+		             	Model.InteractionContext.Get<FUnitMenu>().focusedAbilityName = action.focusName;
+		                return DefaultPassthrough(action);
 		             },
 		             DefaultPassthrough
 	             }, worldAction);

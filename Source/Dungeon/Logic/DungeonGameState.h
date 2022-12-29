@@ -80,6 +80,7 @@ struct FUnitMenu
   
   int unitId;
   TSet<FName> deactivatedAbilities;
+  FName focusedAbilityName;
 };
 
 enum EAbilityId
@@ -143,6 +144,10 @@ struct FCheckPoint
 {
 };
 
+struct FFocusChanged {
+  FName focusName;
+};
+
 using TDungeonAction = TVariant<
   FEmptyVariantState,
   FInteractionResults,
@@ -155,7 +160,8 @@ using TDungeonAction = TVariant<
   FEndTurnAction,
   FBackAction,
   FWaitAction,
-  FCommitAction
+  FCommitAction,
+  FFocusChanged
 >;
 
 USTRUCT()

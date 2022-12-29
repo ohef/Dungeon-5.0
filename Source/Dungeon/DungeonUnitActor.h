@@ -46,6 +46,15 @@ public:
   
   UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")
   void ReactCombatAction(FCombatAction updatedState);
+
+  UPROPERTY(EditAnywhere,BlueprintReadWrite)
+  UStaticMesh* UnitIndicatorMesh;
+  
+  UPROPERTY(EditAnywhere,BlueprintReadWrite)
+  UStaticMeshComponent* UnitIndicatorMeshComponent;
+
+  UPROPERTY()
+  TArray<TWeakObjectPtr<UMaterialInterface>> UnitTeamMaterials;
   
   UPROPERTY(EditAnywhere,BlueprintReadWrite)
   UInterpToMovementComponent* InterpToMovementComponent;

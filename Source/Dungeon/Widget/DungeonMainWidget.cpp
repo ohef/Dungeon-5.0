@@ -21,6 +21,7 @@ const auto FocusFirstSlot = [](TArray<UPanelSlot*> slots)
 	(*firstSlot)->Content->SetFocus();
 };
 
+//TODO: I hate this, need to find a better way to define the edges
 struct FDungeonWidgetContextHandler
 {
 	TWeakObjectPtr<UDungeonMainWidget> dungeonWidget;
@@ -36,24 +37,14 @@ struct FDungeonWidgetContextHandler
 		{
 			dungeonWidget->UnitActionMenu->SetVisibility(ESlateVisibility::Visible);
 
-			// { dungeonWidget->Attack, dungeonWidget->Wait, dungeonWidget->Move };
-			dungeonWidget->Move->SetVisibility(ESlateVisibility::Visible);
+			for (const TFunction<void()>& ContextUpdate : dungeonWidget->contextUpdates)
+				ContextUpdate();
 
-			if(r.deactivatedAbilities.Contains("MoveAction")){
-				dungeonWidget->Move->SetVisibility(ESlateVisibility::Collapsed);
-			}
-
-			if(dungeonWidget->notApplicable["CombatAction"]())
+			if constexpr (TNot<TIsSame<TFrom, FUnitMenu>>::Value)
 			{
-				dungeonWidget->Attack->SetVisibility(ESlateVisibility::Collapsed);
+				TArray<UPanelSlot*> PanelSlots = dungeonWidget->UnitActionMenu->GetSlots();
+				FocusFirstSlot(PanelSlots);
 			}
-			else
-			{
-				dungeonWidget->Attack->SetVisibility(ESlateVisibility::Visible);
-			}
-
-			TArray<UPanelSlot*> PanelSlots = dungeonWidget->UnitActionMenu->GetSlots();
-			FocusFirstSlot(PanelSlots);
 		}
 		else if constexpr (TIsSame<TFrom, FUnitMenu>::Value)
 		{
@@ -82,8 +73,6 @@ struct FDungeonWidgetContextHandler
 void UDungeonMainWidget::NativeOnFocusLost(const FFocusEvent& InFocusEvent)
 {
 	Super::NativeOnFocusLost(InFocusEvent);
-	UKismetSystemLibrary::PrintString(this,
-		"WOWOWOWWOWOWeuastnheoustneoanuheonathuesoanthueoastuhoaenst");
 }
 
 bool UDungeonMainWidget::Initialize()
@@ -97,13 +86,13 @@ bool UDungeonMainWidget::Initialize()
 	lager::lenses::attr(&FDungeonWorldState::TurnState)
 		| lager::lenses::attr( &FTurnState::teamId))
 	.make();
-		
-	turnStateReader.watch(THookFunctor<int>(turnStateReader.get(), [this](int teamId)
-	                                        {
-		                                        TurnNotifierWidget->PlayAnimation(TurnNotifierWidget->FadeIn, 0, 1,
-			                                        EUMGSequencePlayMode::PingPong, 1);
-	                                        }
-	));
+
+	turnStateReader.watch([this](int teamId)
+		{
+			TurnNotifierWidget->PlayAnimation(TurnNotifierWidget->FadeIn, 0, 1,
+			                                  EUMGSequencePlayMode::PingPong, 1);
+		}
+	);
 
 	contextCursor = UseState(interactionContextLens);
 	contextCursor.bind(TPreviousHookFunctor<TInteractionContext>(contextCursor.get(), [&](auto&& previous, auto&& next)
@@ -112,17 +101,55 @@ bool UDungeonMainWidget::Initialize()
 		return next;
 	}));
 
+	FSlateApplication::Get().OnFocusChanging().AddUObject(this, &UDungeonMainWidget::OnFocusChanged );
+
 	MainMapMenu->EndTurn->OnClicked.AddDynamic(this, &UDungeonMainWidget::OnEndTurnClicked);
 	Move->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnMoveClicked);
 	Attack->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnAttackClicked);
 	Wait->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnWaitClicked);
 
-	notApplicable.Add(FName("CombatAction"), [&]
+	auto visibilityCheck = [](auto&& widget, auto&& dontShow)
+	{
+		return [ dontShow = DUNGEON_FOWARD(dontShow), widget = DUNGEON_FOWARD(widget)]
+		{
+			dontShow()
+				? widget->SetVisibility(ESlateVisibility::Collapsed)
+				: widget->SetVisibility(ESlateVisibility::Visible);
+		};
+	};
+
+	contextUpdates.Add(visibilityCheck(Attack, [&]
 	{
 		return GetInteractablePositions(UseViewState()).IsEmpty();
-	});
+	}));
+	
+	contextUpdates.Add(visibilityCheck(Move, [&]
+	{
+		return UseViewState(interactionContextLens | unreal_alternative<FUnitMenu> | ignoreOptional). deactivatedAbilities.Contains("MoveAction");
+	}));
 	
 	return true;
+}
+
+void UDungeonMainWidget::OnFocusChanged(const FFocusEvent& FocusEvent,
+      		   const FWeakWidgetPath& OldFocusedWidgetPath,
+      		   const TSharedPtr<SWidget>& OldFocusedWidget,
+      		   const FWidgetPath& NewFocusedWidgetPath,
+      		   const TSharedPtr<SWidget>& NewFocusedWidget)
+{
+	auto checkWidgets = [&](auto& ...Widgets)
+	{
+		auto checkStuff = [&](auto& Widget) -> void
+		{
+			if (Widget->TakeWidget() == NewFocusedWidget)
+			{
+				StoreDispatch(TDungeonAction(TInPlaceType<FFocusChanged>{}, FName(Widget->GetName())));
+			}
+		};
+		( checkStuff(Widgets), ... );
+	};
+	
+	checkWidgets(Attack, Move, Wait );
 }
 
 void UDungeonMainWidget::OnMoveClicked()

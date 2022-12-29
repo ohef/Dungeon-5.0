@@ -3,9 +3,11 @@
 
 #include "Actor/TileVisualizationActor.h"
 
+#include "DungeonReducer.hpp"
 #include "Lenses/model.hpp"
 #include "Dungeon/Utility/HookFunctor.hpp"
 #include "Dungeon/DungeonGameModeBase.h"
+#include "Logic/util.h"
 
 #define FastSubobject(FieldName) \
 FieldName = CreateDefaultSubobject<TRemovePointer<decltype(FieldName)>::Type>(#FieldName);
@@ -18,47 +20,71 @@ ATileVisualizationActor::ATileVisualizationActor(const FObjectInitializer& Objec
 	FastSubobject(TileVisualizationComponent)
 }
 
-struct FContextHandler
-{
-	TWeakObjectPtr<ATileVisualizationActor> owner;
-	
-	void handle(FSelectingUnitContext previouss, FSelectingUnitContext nextt)
-	{
-		if (!owner.IsValid() || owner->TileVisualizationComponent == nullptr)
-		{
-			return;
-		}
-		
-		owner->TileVisualizationComponent->Clear();
-		owner->TileVisualizationComponent->ShowTiles(nextt.interactionTiles.FindChecked(move), FLinearColor::Blue);
-		owner->TileVisualizationComponent->ShowTiles(
-			nextt.interactionTiles.FindChecked(attack)
-			.Difference(nextt.interactionTiles.FindChecked(move)),
-			FLinearColor::Red);
-	}
-
-	template <class Tx, class Ty>
-	void handle(Tx previouss, Ty nextt)
-	{
-	}
-
-	template <class Tx, class Ty>
-	void operator()(Tx previouss, Ty nextt)
-	{
-		handle(previouss, nextt);
-	}
-};
-
 // Called when the game starts or when spawned
 void ATileVisualizationActor::BeginPlay()
 {
 	Super::BeginPlay();
-	contextCursor = UseState(interactionContextLens).make();
-	contextCursor.bind(TPreviousHookFunctor<TInteractionContext>(contextCursor.get(), [&](const auto& previous, const auto& next)
+
+	UseEvent().AddLambda(Dungeon::MatchEffect([&](const FBackAction& action)
 	{
-		Visit(FContextHandler{this}, Forward<decltype(previous)>(previous), Forward<decltype(next)>(next));
-		return next;
+		contextCursor.nudge();
 	}));
+
+	contextCursor = UseState(interactionContextLens).make();
+	contextCursor.bind(Dungeon::MatchEffect(
+		[&](const FSelectingUnitContext& context)
+		{
+			if (this->TileVisualizationComponent == nullptr)
+			{
+				return;
+			}
+
+			this->TileVisualizationComponent->Clear();
+
+			const auto& model = this->UseViewState();
+			TOptional<FDungeonLogicUnit> unit = lager::view(getUnitUnderCursor, model);
+
+			if (unit.IsSet())
+			{
+				auto [MovementPoints,AttackPoints] = GetInteractionFields(model, unit->Id);
+				this->TileVisualizationComponent->ShowTiles(MovementPoints,
+				                                            FLinearColor::Blue);
+				this->TileVisualizationComponent->ShowTiles(AttackPoints.Difference(MovementPoints),
+				                                            FLinearColor::Red);
+			}
+		},
+		[&](const FUnitMenu& menu)
+		{
+			if (this->TileVisualizationComponent == nullptr)
+			{
+				return;
+			}
+
+			const auto& model = this->UseViewState();
+
+			if (menu.focusedAbilityName == FName("Move"))
+			{
+				this->TileVisualizationComponent->Clear();
+
+				auto [MovementPoints,AttackPoints] = GetInteractionFields(model, menu.unitId);
+
+				this->TileVisualizationComponent->ShowTiles(MovementPoints, FLinearColor::Blue);
+				this->TileVisualizationComponent->ShowTiles(AttackPoints.Difference(MovementPoints), FLinearColor::Red);
+			}
+
+			if (menu.focusedAbilityName == FName("Attack"))
+			{
+				auto attackTiles = manhattanReachablePoints(
+					model.map.Width,
+					model.map.Height,
+					lager::view(unitIdToData(menu.unitId), model).attackRange,
+					lager::view(unitIdToPosition(menu.unitId), model));
+
+				this->TileVisualizationComponent->Clear();
+				this->TileVisualizationComponent->ShowTiles(attackTiles, FLinearColor::Red);
+			}
+		}
+	));
 }
 
 // Called every frame

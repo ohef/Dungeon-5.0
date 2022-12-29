@@ -6,7 +6,7 @@
 #include "lager/store.hpp"
 #include "Logic/DungeonGameState.h"
 
-// DEFINE_LOG_CATEGORY(DungeonLog);
+//TODO: Devise a plan for super generic stuff 
 
 struct FDungeonWorldState;
 struct FUnitInteraction;
@@ -85,3 +85,16 @@ struct FHistoryModel
 };
 
 using TDungeonStore = lager::store<TStoreAction, FHistoryModel>;
+
+namespace Dungeon
+{
+	const auto identity = [](auto&& x) {};
+	
+	const auto MatchEffect = [](auto&&... values)
+	{
+		return [values...](auto&& evt)
+		{
+			Visit(TDungeonVisitor{Dungeon::identity, values...}, evt);
+		};
+	};
+}

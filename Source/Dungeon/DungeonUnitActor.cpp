@@ -25,12 +25,27 @@ ADungeonUnitActor::ADungeonUnitActor()
 	static ConstructorHelpers::FClassFinder<UDamageWidget> DamageWidgetClasss(
 		TEXT("/Game/Blueprints/Widgets/DamageWidget"));
 
+	this->UnitIndicatorMesh =
+		ConstructorHelpers::FObjectFinder<UStaticMesh> (TEXT("StaticMesh'/Game/untitled_category/untitled_asset/Circle.Circle'")).Object;
+		
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Team1(
+		TEXT("MaterialInstanceConstant'/Game/Blueprints/Team1.Team1'"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Team2(
+		TEXT("MaterialInstanceConstant'/Game/Blueprints/Team2.Team2'"));
+	this->UnitTeamMaterials.Add(Team1.Object);
+	this->UnitTeamMaterials.Add(Team2.Object);
+	
 	DamageWidgetClass = DamageWidgetClasss.Class;
 	InterpToMovementComponent = CreateDefaultSubobject<UInterpToMovementComponent>(TEXT("InterpToMovementComponent"));
 	this->RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent")); 
 	PathRotation = CreateDefaultSubobject<USceneComponent>(TEXT("PathRotation"));
 	PathRotation->AttachToComponent(this->RootComponent,
 	                                FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
+
+	UnitIndicatorMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("UnitIndicatorMeshComponent "));
+	UnitIndicatorMeshComponent->SetStaticMesh(UnitIndicatorMesh);
+	UnitIndicatorMeshComponent->AttachToComponent(PathRotation, FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
+	UnitIndicatorMeshComponent->SetWorldTransform(FTransform{FRotator::ZeroRotator, FVector{0, 0, 0.1}});
 }
 
 // Called when the game starts or when spawned
@@ -48,10 +63,14 @@ void ADungeonUnitActor::BeginPlay()
 
 void ADungeonUnitActor::HookIntoStore()
 {
-	reader = UseState(lager::lenses::fan(thisUnitLens(id), unitIdToPosition(id), isUnitFinishedLens2(id)))
+	reader = UseState(lager::lenses::fan(unitIdToData(id), unitIdToPosition(id), isUnitFinishedLens2(id)))
 	.make();
 
 	UseEvent().AddUObject(this, &ADungeonUnitActor::HandleGlobalEvent);
+
+	auto [unit,x,y] = reader.get();
+
+	UnitIndicatorMeshComponent->SetMaterial(0, UnitTeamMaterials[unit.teamId - 1].Get());
 	
 	lastPosition = lager::view(second, reader.get());
 	reader.bind(TPreviousHookFunctor<decltype(reader)::value_type>(
@@ -70,17 +89,17 @@ void ADungeonUnitActor::HookIntoStore()
 		}));
 }
 
-
 const auto getId = zug::comp([](FDungeonLogicUnit x) { return x.Id; });
 
 template <size_t N>
 const auto getElement = zug::comp([](auto x) { return std::get<N>(x); }); 
 
+const auto getThisId = getId | getElement<0>;
+
 struct FDungeonUnitActorHandler
 {
 	ADungeonUnitActor* _this;
 
-	static inline auto getThisId = getId | getElement<0>;
 
 	//Sink function; just does nothing
 	template <typename T>
