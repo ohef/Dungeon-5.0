@@ -17,7 +17,6 @@
 #include "GameFramework/GameModeBase.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "lager/store.hpp"
-#include "Widget/Menus/EasyMenu.h"
 
 #include "DungeonGameModeBase.generated.h"
 

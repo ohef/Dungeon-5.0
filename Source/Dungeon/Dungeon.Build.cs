@@ -11,8 +11,13 @@ public class Dungeon : ModuleRules
 		OptimizeCode = CodeOptimization.Never;
 
 		PublicDependencyModuleNames.AddRange(new string[]
-			{"Core", "CoreUObject", "Engine", "InputCore", "RenderCore", "Slate", "SlateCore", "UMG", "MainFrame"});
-		PrivateDependencyModuleNames.AddRange(new string[] {"Json", "JsonUtilities", "Slate", "SlateCore", "UMG"});
+			{"Core", "CoreUObject", "Engine", "InputCore", "RenderCore", "Slate", "SlateCore", "UMG", "MainFrame", 
+				// "UnrealEd"
+			});
+		PrivateDependencyModuleNames.AddRange(new string[] {
+			"Json", "JsonUtilities", "Slate", "SlateCore", "UMG", "WorkspaceMenuStructure", "DataTableEditor", 
+			// "UnrealEd"
+		});
 
 		PrivateIncludePaths.AddRange(new string[] {"Dungeon/ThirdParty", "Dungeon"});
 

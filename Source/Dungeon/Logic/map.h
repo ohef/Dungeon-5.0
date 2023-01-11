@@ -12,20 +12,20 @@ struct FDungeonLogicMap
 {
   GENERATED_BODY()
 
-  UPROPERTY(Category=Dungeon, VisibleAnywhere)
+  UPROPERTY(Category=Dungeon, EditAnywhere)
   int Width;
-  UPROPERTY(Category=Dungeon, VisibleAnywhere)
+  UPROPERTY(Category=Dungeon, EditAnywhere)
   int Height;
 
-  UPROPERTY(Category=Dungeon, VisibleAnywhere)
-  TMap<int, FName> abilityOwnership;
-  UPROPERTY(Category=Dungeon, VisibleAnywhere)
-  TMap<int, FDungeonLogicUnit> loadedUnits;
-  UPROPERTY(Category=Dungeon, VisibleAnywhere)
-  TMap<int, FDungeonLogicTile> loadedTiles;
+  UPROPERTY(Category=Dungeon, EditAnywhere)
+  TMap<int, FName> AbilityOwnership;
+  UPROPERTY(Category=Dungeon, EditAnywhere)
+  TMap<int, FDungeonLogicUnit> LoadedUnits;
+  UPROPERTY(Category=Dungeon, EditAnywhere)
+  TMap<int, FDungeonLogicTile> LoadedTiles;
 
-  UPROPERTY(Category=Dungeon, VisibleAnywhere)
-  TMap<FIntPoint, int> tileAssignment;
-  UPROPERTY(Category=Dungeon, VisibleAnywhere)
-  TMap<FIntPoint, int> unitAssignment;
+  UPROPERTY(Category=Dungeon, EditAnywhere)
+  TMap<FIntPoint, int> TileAssignment;
+  UPROPERTY(Category=Dungeon, EditAnywhere)
+  TMap<FIntPoint, int> UnitAssignment;
 };

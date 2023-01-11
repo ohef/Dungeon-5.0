@@ -90,20 +90,20 @@ void ADungeonGameModeBase::BeginPlay()
 		const auto& Rows = Parser.GetRows();
 		int32 height = Rows.Num();
 
-		Game.map.loadedTiles.Add(1, {1, "Grass", 1});
+		Game.Map.LoadedTiles.Add(1, {1, "Grass", 1});
 
 		for (int i = 0; i < height; i++)
 		{
 			int32 width = Rows[i].Num();
-			Game.map.Height = height;
-			Game.map.Width = width;
+			Game.Map.Height = height;
+			Game.Map.Width = width;
 			Game.TurnState.teamId = 1;
 			for (int j = 0; j < width; j++)
 			{
 				int dataIndex = i * width + j;
 				auto value = FCString::Atoi(Rows[i][j]);
 
-				Game.map.tileAssignment.Add({i, j}, 1);
+				Game.Map.TileAssignment.Add({i, j}, 1);
 
 				if (loadedUnitTypes.Contains(value))
 				{
@@ -111,10 +111,10 @@ void ADungeonGameModeBase::BeginPlay()
 					auto zaunit = zaRow.unitData;
 					zaunit.Id = dataIndex;
 					zaunit.Name = FString::FormatAsNumber(dataIndex);
-					Game.map.loadedUnits.Add(zaunit.Id, zaunit);
+					Game.Map.LoadedUnits.Add(zaunit.Id, zaunit);
 
 					FIntPoint positionPlacement{i, j};
-					Game.map.unitAssignment.Add(positionPlacement, dataIndex);
+					Game.Map.UnitAssignment.Add(positionPlacement, dataIndex);
 
 					UClass* UnrealActor = zaRow.UnrealActor.Get();
 					FTransform Transform = FTransform{FRotator::ZeroRotator, FVector::ZeroVector};

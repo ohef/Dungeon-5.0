@@ -143,7 +143,7 @@ auto Find(Key key)
 			}())([&](Part part)
 			{
 				auto r = std::forward<Whole>(whole);
-				if (part.IsSet() && r.Contains(key))
+				if (part.IsSet())
 				{
 					if constexpr (TIsTMap<typename TDecay<Whole>::Type>::Value)
 					{

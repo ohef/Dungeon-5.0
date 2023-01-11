@@ -1,10 +1,9 @@
 #pragma once
 
-#include "Action.h"
 #include "UnitContextAction.generated.h"
 
 USTRUCT(BlueprintType)
-struct FUnitContextAction : public FAction
+struct FUnitContextAction 
 {
   GENERATED_BODY()
 

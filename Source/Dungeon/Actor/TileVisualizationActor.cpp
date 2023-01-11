@@ -5,7 +5,6 @@
 
 #include "DungeonReducer.hpp"
 #include "Lenses/model.hpp"
-#include "Dungeon/Utility/HookFunctor.hpp"
 #include "Dungeon/DungeonGameModeBase.h"
 #include "Logic/util.h"
 
@@ -75,8 +74,8 @@ void ATileVisualizationActor::BeginPlay()
 			if (menu.focusedAbilityName == FName("Attack"))
 			{
 				auto attackTiles = manhattanReachablePoints(
-					model.map.Width,
-					model.map.Height,
+					model.Map.Width,
+					model.Map.Height,
 					lager::view(unitIdToData(menu.unitId), model).attackRange,
 					lager::view(unitIdToPosition(menu.unitId), model));
 

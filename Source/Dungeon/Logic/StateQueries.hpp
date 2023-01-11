@@ -25,8 +25,8 @@ const auto GetInteractablePositions = [](const FDungeonWorldState& Model)
 	const auto& unitData = selector(unitDataLens(*unitId) | ignoreOptional);
 
 	auto points = manhattanReachablePoints(
-		Model.map.Width,
-		Model.map.Height,
+		Model.Map.Width,
+		Model.Map.Height,
 		unitData.attackRange,
 		cursorPosition);
 

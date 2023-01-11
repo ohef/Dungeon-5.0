@@ -9,6 +9,6 @@ public class DungeonEditorTarget : TargetRules
 	{
 		Type = TargetType.Editor;
 		DefaultBuildSettings = BuildSettingsVersion.V2;
-		ExtraModuleNames.AddRange( new string[] { "Dungeon" } );
+		ExtraModuleNames.AddRange( new string[] { "Dungeon", "DungeonEditor" } );
   }
 }

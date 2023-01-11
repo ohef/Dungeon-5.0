@@ -3,8 +3,6 @@
 #include "CoreMinimal.h"
 #include <JsonUtilities/Public/JsonUtilities.h>
 
-#include "lager/detail/nodes.hpp"
-
 #include "map.h"
 #include "TargetsAvailableId.h"
 #include "Dungeon/Actions/CombatAction.h"
@@ -148,8 +146,15 @@ struct FFocusChanged {
   FName focusName;
 };
 
+struct FSpawnUnit
+{
+  FIntPoint position;
+  FDungeonLogicUnit unit;
+};
+
 using TDungeonAction = TVariant<
   FEmptyVariantState,
+  FSpawnUnit,
   FInteractionResults,
   FSteppedAction,
   FCursorQueryTarget,
@@ -177,9 +182,9 @@ struct FDungeonWorldState
   
   FIntPoint CursorPosition;
 
-  UPROPERTY(VisibleAnywhere)
-  FDungeonLogicMap map;
+  UPROPERTY(EditAnywhere)
+  FDungeonLogicMap Map;
 
-  UPROPERTY(VisibleAnywhere)
+  UPROPERTY(EditAnywhere)
   TMap<int, TWeakObjectPtr<ADungeonUnitActor>> unitIdToActor;
 };

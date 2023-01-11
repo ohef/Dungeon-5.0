@@ -4,6 +4,7 @@
 #include "Logic/DungeonGameState.h"
 #include "lager/store.hpp"
 #include "lager/util.hpp"
+#include "lager/lenses/tuple.hpp"
 #include "Lenses/model.hpp"
 #include "Logic/util.h"
 #include "Utility/VariantVisitor.hpp"
@@ -22,8 +23,8 @@ inline auto GetInteractionFields(FDungeonWorldState Model,
 	if (unitCanTakeAction)
 	{
 		points = manhattanReachablePoints(
-			Model.map.Width,
-			Model.map.Height,
+			Model.Map.Width,
+			Model.Map.Height,
 			interactionDistance,
 			unitsPosition);
 		points.Remove(unitsPosition);
@@ -135,248 +136,243 @@ struct FCursorPositionUpdatedHandler : public TVariantVisitor<void, TInteraction
 inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction) -> FDungeonReducerResult
 {
 	const auto DungeonView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
-	const auto DefaultPassthrough = [&](auto) -> FDungeonReducerResult { return {Model, lager::noop}; };
+	const auto DefaultPassthrough = [&](auto& x) -> FDungeonReducerResult { return {Model, lager::noop}; };
+	const auto Matcher = Dungeon::Match(DefaultPassthrough);
 
-	return Visit(TDungeonVisitor
-	             {
-		             [&](FBackAction&) -> FDungeonReducerResult
-		             {
-			             return Visit(lager::visitor{
-				                          [&](auto& all) -> FDungeonReducerResult
-				                          {
-					                          auto Value = FBackTransitions{}(all);
-					                          Model.InteractionContext.Set<decltype(Value)>(Value);
-					                          return {Model, lager::noop};
-				                          },
-			                          }, Model.InteractionContext);
-		             },
-		             [&](FTimingInteractionResults& action) -> FDungeonReducerResult
-		             {
-			             return Visit(TDungeonVisitor{
-				                          [&](FCombatAction& waitingAction) -> FDungeonReducerResult
-				                          {
-					                          auto damage = DungeonView(unitDataLens(waitingAction.InitiatorId))->damage
-						                          - floor((0.05 * action[0].order));
+	return Matcher
+	([&](FBackAction&) -> FDungeonReducerResult
+	 {
+		 return Visit(lager::visitor{
+			              [&](auto& all) -> FDungeonReducerResult
+			              {
+				              auto Value = FBackTransitions{}(all);
+				              Model.InteractionContext.Set<decltype(Value)>(Value);
+				              return {Model, lager::noop};
+			              },
+		              }, Model.InteractionContext);
+	 },
+	 [&](FSpawnUnit& action) -> FDungeonReducerResult
+	 {
+		 const auto& Lens = lager::lenses::fan(
+			 unitDataLens(action.unit.Id),
+			 getUnitAtPointLens(action.position));
+		 auto UpdatedModel = lager::set(Lens, Model, std::make_tuple(TOptional(action.unit), TOptional(action.unit.Id)));
+		 return {UpdatedModel, lager::noop};
+	 },
+	 [&](FTimingInteractionResults& action) -> FDungeonReducerResult
+	 {
+		 return Matcher
+		 ([&](FCombatAction& waitingAction) -> FDungeonReducerResult
+		 {
+			 auto damage = DungeonView(unitDataLens(waitingAction.InitiatorId))->damage
+				 - floor((0.05 * action[0].order));
 
-					                          waitingAction.updatedUnit.HitPoints -= damage;
-					                          waitingAction.damageValue = damage;
+			 waitingAction.updatedUnit.HitPoints -= damage;
+			 waitingAction.damageValue = damage;
 
-					                          Model.InteractionsToResolve.Pop();
+			 Model.InteractionsToResolve.Pop();
 
-					                          return {
-						                          Model, [waitingAction = MoveTemp(waitingAction)](auto ctx)
-						                          {
-							                          ctx.dispatch(
-								                          TDungeonAction(TInPlaceType<FCombatAction>{}, waitingAction));
-						                          }
-					                          };
-				                          },
-				                          DefaultPassthrough
-			                          }, Model.WaitingForResolution);
-		             },
-		             [&](FCursorQueryTarget& actionTarget) -> FDungeonReducerResult
-		             {
-			             return Visit(TDungeonVisitor{
-				                          [&](FSelectingUnitAbilityTarget&) -> FDungeonReducerResult
-				                          {
-					                          return Visit(TDungeonVisitor{
-						                                       [&](FMoveAction waitingAction) -> FDungeonReducerResult
-						                                       {
-							                                       bool bIsUnitThere = DungeonView(
-								                                       getUnitAtPointLens(actionTarget.target)).IsSet();
-							                                       auto [movementTiles, attackTiles] =
-								                                       GetInteractionFields(
-									                                       Model, waitingAction.InitiatorId);
-							                                       if (bIsUnitThere || !movementTiles.Contains(
-								                                       actionTarget.target))
-								                                       return {Model, lager::noop};
+			 return {
+				 Model, [waitingAction = MoveTemp(waitingAction)](auto ctx)
+				 {
+					 ctx.dispatch(
+						 TDungeonAction(TInPlaceType<FCombatAction>{}, waitingAction));
+				 }
+			 };
+		 })(Model.WaitingForResolution);
+	 },
+	 [&](FCursorQueryTarget& actionTarget) -> FDungeonReducerResult
+	 {
+		 return Matcher
+		 ([&](FSelectingUnitAbilityTarget&) -> FDungeonReducerResult
+		  {
+			  return Matcher
+			  ([&](FMoveAction waitingAction) -> FDungeonReducerResult
+			   {
+				   bool bIsUnitThere = DungeonView(getUnitAtPointLens(actionTarget.target)).IsSet();
+				   auto [movementTiles, attackTiles] = GetInteractionFields(Model, waitingAction.InitiatorId);
+				   if (bIsUnitThere || !movementTiles.Contains(actionTarget.target))
+					   return {Model, lager::noop};
 
-							                                       waitingAction.Destination = actionTarget.target;
-							                                       // Model.InteractionsToResolve.Pop();
-							                                       return {
-								                                       Model,
-								                                       [waitingAction = MoveTemp(waitingAction)](auto ctx)
-								                                       {
-									                                       ctx.dispatch(
-										                                       TDungeonAction(
-											                                       TInPlaceType<FChangeState>{},
-											                                       TInteractionContext(
-												                                       TInPlaceType<FUnitMenu>{},
-												                                       waitingAction.InitiatorId,
-												                                       TSet<FName>({"MoveAction"})))
-									                                       );
-									                                       ctx.dispatch(TDungeonAction(
-										                                       TInPlaceType<FMoveAction>{},
-										                                       waitingAction));
-								                                       }
-							                                       };
-						                                       },
-						                                       [&](FCombatAction& waitingAction) -> FDungeonReducerResult
-						                                       {
-							                                       TOptional<FDungeonLogicUnit> initiatingUnit =
-								                                       DungeonView(
-									                                       unitDataLens(waitingAction.InitiatorId));
-							                                       int targetedUnitId = DungeonView(
-								                                       getUnitAtPointLens(actionTarget.target) |
-								                                       unreal_value_or(-1));
-							                                       TOptional<FDungeonLogicUnit> targetedUnit =
-								                                       DungeonView(unitDataLens(targetedUnitId));
+				   waitingAction.Destination = actionTarget.target;
+				   // Model.InteractionsToResolve.Pop();
+				   return {
+					   Model,
+					   [waitingAction = MoveTemp(waitingAction)](auto ctx)
+					   {
+						   ctx.dispatch(
+							   TDungeonAction(
+								   TInPlaceType<FChangeState>{},
+								   TInteractionContext(
+									   TInPlaceType<FUnitMenu>{},
+									   waitingAction.InitiatorId,
+									   TSet<FName>({"MoveAction"})))
+						   );
+						   ctx.dispatch(TDungeonAction(
+							   TInPlaceType<FMoveAction>{},
+							   waitingAction));
+					   }
+				   };
+			   },
+			   [&](FCombatAction& waitingAction) -> FDungeonReducerResult
+			   {
+				   TOptional<FDungeonLogicUnit> initiatingUnit =
+					   DungeonView(
+						   unitDataLens(waitingAction.InitiatorId));
+				   int targetedUnitId = DungeonView(
+					   getUnitAtPointLens(actionTarget.target) |
+					   unreal_value_or(-1));
+				   TOptional<FDungeonLogicUnit> targetedUnit =
+					   DungeonView(unitDataLens(targetedUnitId));
 
-							                                       auto [movementTiles, attackTiles] =
-								                                       GetInteractionFields(
-									                                       Model, waitingAction.InitiatorId);
+				   auto [movementTiles, attackTiles] =
+					   GetInteractionFields(
+						   Model, waitingAction.InitiatorId);
 
-							                                       bool isInRange = attackTiles.Union(movementTiles).
-								                                       Contains(actionTarget.target);
-							                                       bool isUnitThere = targetedUnit.IsSet();
-							                                       bool isTargetNotOnTheSameTeam = targetedUnit.IsSet()
-								                                       && targetedUnit->teamId != initiatingUnit->
-								                                       teamId;
-							                                       if (isInRange && isUnitThere &&
-								                                       isTargetNotOnTheSameTeam)
-							                                       {
-								                                       waitingAction.target = actionTarget.target;
-								                                       waitingAction.updatedUnit = targetedUnit.
-									                                       GetValue();
-								                                       Model.InteractionsToResolve.Pop();
-							                                       	
-								                                       auto val = Model.InteractionsToResolve.Top().
-									                                       TryGet<FUnitInteraction>();
-								                                       val->originatorID = waitingAction.InitiatorId;
-								                                       auto possibleTarget = DungeonView(
-									                                       getUnitAtPointLens(
-										                                       DungeonView(cursorPositionLens)));
-								                                       val->targetIDUnderFocus = *possibleTarget;
+				   bool isInRange = attackTiles.Union(movementTiles).
+				                                Contains(actionTarget.target);
+				   bool isUnitThere = targetedUnit.IsSet();
+				   bool isTargetNotOnTheSameTeam = targetedUnit.IsSet()
+					   && targetedUnit->teamId != initiatingUnit->
+					   teamId;
+				   if (isInRange && isUnitThere &&
+					   isTargetNotOnTheSameTeam)
+				   {
+					   waitingAction.target = actionTarget.target;
+					   waitingAction.updatedUnit = targetedUnit.
+						   GetValue();
+					   Model.InteractionsToResolve.Pop();
 
-								                                       return {
-									                                       Model,
-									                                       [interaction = Model.InteractionsToResolve.Top()](auto ctx)
-									                                       {
-										                                       ctx.dispatch(
-											                                       TDungeonAction(
-												                                       TInPlaceType<FChangeState>{},
-												                                       interaction));
-									                                       }
-								                                       };
-							                                       }
+					   auto val = Model.InteractionsToResolve.Top().
+					                    TryGet<FUnitInteraction>();
+					   val->originatorID = waitingAction.InitiatorId;
+					   auto possibleTarget = DungeonView(
+						   getUnitAtPointLens(
+							   DungeonView(cursorPositionLens)));
+					   val->targetIDUnderFocus = *possibleTarget;
 
-							                                       return DefaultPassthrough(waitingAction);
-						                                       },
-						                                       DefaultPassthrough
-					                                       }, Model.WaitingForResolution);
-				                          },
-				                          [&](FSelectingUnitContext&) -> FDungeonReducerResult
-				                          {
-					                          auto foundUnitOpt = DungeonView(interactionContextLens
-						                          | unreal_alternative_pipeline_t<FSelectingUnitContext>()
-						                          | map_opt(lager::lenses::attr(
-							                          &FSelectingUnitContext::unitUnderCursor))
-						                          | or_default);
+					   return {
+						   Model,
+						   [interaction = Model.InteractionsToResolve.Top()](auto ctx)
+						   {
+							   ctx.dispatch(
+								   TDungeonAction(
+									   TInPlaceType<FChangeState>{},
+									   interaction));
+						   }
+					   };
+				   }
 
-					                          if (!foundUnitOpt.IsSet())
-						                          return {Model, lager::noop};
+				   return DefaultPassthrough(waitingAction);
+			   }
+			  )(Model.WaitingForResolution);
+		  },
+		  [&](FSelectingUnitContext&) -> FDungeonReducerResult
+		  {
+			  auto foundUnitOpt = Dungeon::Selectors::GetUnitIdUnderCursor(Model);  
+			  if (!foundUnitOpt.IsSet())
+				  return {Model, lager::noop};
 
-					                          auto foundUnitId = foundUnitOpt.GetValue();
-					                          auto isFinished = !DungeonView(isUnitFinishedLens2(foundUnitId)).IsSet();
+			  auto foundUnitId = *foundUnitOpt;
+			  auto isFinished = !DungeonView(isUnitFinishedLens2(foundUnitId)).IsSet();
 
-					                          const auto& TurnState = DungeonView(attr(&FDungeonWorldState::TurnState));
-					                          auto DungeonLogicUnit = DungeonView(
-						                          unitDataLens(foundUnitId) | ignoreOptional);
+			  const auto& TurnState = DungeonView(attr(&FDungeonWorldState::TurnState));
+			  auto DungeonLogicUnit = DungeonView(
+				  unitDataLens(foundUnitId) | ignoreOptional);
 
-					                          auto isOnTeam = TurnState.teamId == DungeonLogicUnit.teamId;
-					                          if (isFinished && isOnTeam)
-					                          {
-						                          return {
-							                          Model, [foundUnitId](auto& ctx)
-							                          {
-								                          ctx.dispatch(
-									                          TDungeonAction(TInPlaceType<FChangeState>{},
-									                                         TInteractionContext(
-										                                         TInPlaceType<FUnitMenu>{},
-										                                         foundUnitId)));
-							                          }
-						                          };
-					                          }
-					                          else
-					                          {
-						                          return {Model, lager::noop};
-					                          }
-				                          },
-				                          DefaultPassthrough 
-			                          }, Model.InteractionContext);
-		             },
-		             [&](FSteppedAction& action) -> FDungeonReducerResult
-		             {
-			             Model.InteractionsToResolve = action.interactions;
-			             Model.WaitingForResolution = action.mainAction;
-			             return AddInChangeStateEffect(Model, action.interactions.Top());
-		             },
-		             [&](FWaitAction& action) -> FDungeonReducerResult
-		             {
-			             Model.TurnState.unitsFinished.Add(action.InitiatorId);
-			             Model.InteractionContext.Set<FSelectingUnitContext>({});
+			  auto isOnTeam = TurnState.teamId == DungeonLogicUnit.teamId;
+			  if (isFinished && isOnTeam)
+			  {
+				  return {
+					  Model, [foundUnitId](auto& ctx)
+					  {
+						  ctx.dispatch(
+							  TDungeonAction(TInPlaceType<FChangeState>{},
+							                 TInteractionContext(
+								                 TInPlaceType<FUnitMenu>{},
+								                 foundUnitId)));
+					  }
+				  };
+			  }
+			  else
+			  {
+				  return {Model, lager::noop};
+			  }
+		  }
+		 )(Model.InteractionContext);
+	 },
+	 [&](FSteppedAction& action) -> FDungeonReducerResult
+	 {
+		 Model.InteractionsToResolve = action.interactions;
+		 Model.WaitingForResolution = action.mainAction;
+		 return AddInChangeStateEffect(Model, action.interactions.Top());
+	 },
+	 [&](FWaitAction& action) -> FDungeonReducerResult
+	 {
+		 Model.TurnState.unitsFinished.Add(action.InitiatorId);
+		 Model.InteractionContext.Set<FSelectingUnitContext>({});
 
-			             return {
-				             Model, [](auto& ctx)
-				             {
-					             ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
-				             }
-			             };
-		             },
-		             [&](FChangeState& action) -> FDungeonReducerResult
-		             {
-			             UpdateInteractionContext(Model, action.newState);
-			             return {Model, lager::noop};
-		             },
-		             [&](FEndTurnAction& action) -> FDungeonReducerResult
-		             {
-			             const int MAX_PLAYERS = 2;
-			             const auto nextTeamId = (Model.TurnState.teamId % MAX_PLAYERS) + 1;
+		 return {
+			 Model, [](auto& ctx)
+			 {
+				 ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
+			 }
+		 };
+	 },
+	 [&](FChangeState& action) -> FDungeonReducerResult
+	 {
+		 UpdateInteractionContext(Model, action.newState);
+		 return {Model, lager::noop};
+	 },
+	 [&](FEndTurnAction& action) -> FDungeonReducerResult
+	 {
+		 const int MAX_PLAYERS = 2;
+		 const auto nextTeamId = (Model.TurnState.teamId % MAX_PLAYERS) + 1;
 
-			             Model.TurnState = {nextTeamId};
-			             Model.InteractionContext.Set<FSelectingUnitContext>(FSelectingUnitContext());
-			             return {Model, lager::noop};
-		             },
-		             [&](FCursorPositionUpdated& cpeEvent) -> FDungeonReducerResult
-		             {
-			             Visit(FCursorPositionUpdatedHandler(Model, cpeEvent.cursorPosition), Model.InteractionContext);
-			             Model.CursorPosition = cpeEvent.cursorPosition;
-			             return {Model, lager::noop};
-		             },
-		             [&](FMoveAction& MoveAction)-> FDungeonReducerResult
-		             {
-			             FDungeonLogicMap& DungeonLogicMap = Model.map;
-			             DungeonLogicMap.unitAssignment.Remove(
-				             *DungeonLogicMap.unitAssignment.FindKey(MoveAction.InitiatorId));
-			             DungeonLogicMap.unitAssignment.
-			                             Add(MoveAction.Destination, MoveAction.InitiatorId);
+		 Model.TurnState = {nextTeamId};
+		 Model.InteractionContext.Set<FSelectingUnitContext>(FSelectingUnitContext());
+		 return {Model, lager::noop};
+	 },
+	 [&](FCursorPositionUpdated& cpeEvent) -> FDungeonReducerResult
+	 {
+		 Visit(FCursorPositionUpdatedHandler(Model, cpeEvent.cursorPosition), Model.InteractionContext);
+		 Model.CursorPosition = cpeEvent.cursorPosition;
+		 return {Model, lager::noop};
+	 },
+	 [&](FMoveAction& MoveAction)-> FDungeonReducerResult
+	 {
+		 FDungeonLogicMap& DungeonLogicMap = Model.Map;
+		 DungeonLogicMap.UnitAssignment.Remove(
+			 *DungeonLogicMap.UnitAssignment.FindKey(MoveAction.InitiatorId));
+		 DungeonLogicMap.UnitAssignment.
+		                 Add(MoveAction.Destination, MoveAction.InitiatorId);
 
-			             return { Model, lager::noop };
-		             },
-		             [&](FCombatAction& action) -> FDungeonReducerResult
-		             {
-			             FDungeonLogicUnit& foundUnit = Model.map.loadedUnits.FindChecked(action.InitiatorId);
-			             Model.TurnState.unitsFinished.Add(foundUnit.Id);
+		 return DefaultPassthrough(MoveAction);
+	 },
+	 [&](FCombatAction& action) -> FDungeonReducerResult
+	 {
+		 FDungeonLogicUnit& foundUnit = Model.Map.LoadedUnits.FindChecked(action.InitiatorId);
+		 Model.TurnState.unitsFinished.Add(foundUnit.Id);
 
-			             FDungeonLogicUnit& Unit = action.updatedUnit;
-			             Unit.state = DungeonView(isUnitFinishedLens2(Unit.Id)).IsSet()
-				                          ? UnitState::ActionTaken
-				                          : UnitState::Free;
-			             Model = lager::set(unitDataLens(Unit.Id), Model, action.updatedUnit);
-			             Model.InteractionContext.Set<FSelectingUnitContext>({});
-			             return {
-				             Model, [](auto& ctx)
-				             {
-					             ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
-				             }
-			             };
-		             },
-		             [&](FFocusChanged& action) -> FDungeonReducerResult {
-		             	Model.InteractionContext.Get<FUnitMenu>().focusedAbilityName = action.focusName;
-		                return DefaultPassthrough(action);
-		             },
-		             DefaultPassthrough
-	             }, worldAction);
+		 FDungeonLogicUnit& Unit = action.updatedUnit;
+		 Unit.state = DungeonView(isUnitFinishedLens2(Unit.Id)).IsSet()
+			              ? UnitState::ActionTaken
+			              : UnitState::Free;
+		 Model = lager::set(unitDataLens(Unit.Id), Model, action.updatedUnit);
+		 Model.InteractionContext.Set<FSelectingUnitContext>({});
+		 return {
+			 Model, [](auto& ctx)
+			 {
+				 ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
+			 }
+		 };
+	 },
+	 [&](FFocusChanged& action) -> FDungeonReducerResult
+	 {
+		 Model.InteractionContext.Get<FUnitMenu>().focusedAbilityName = action.focusName;
+		 return DefaultPassthrough(action);
+	 }
+	)(worldAction);
 };
 
 template <typename ...TArgs>

@@ -144,7 +144,7 @@ struct FDungeonUnitActorHandler
 			FIntPoint UpdatedPosition = lager::view(second, ReaderVal);
 
 			TArray<FIntPoint> aStarResult;
-			FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph(_this->UseViewState(attr(&FDungeonWorldState::map)),
+			FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph(_this->UseViewState(attr(&FDungeonWorldState::Map)),
 			                                                    DungeonLogicUnit.Movement);
 			FGraphAStar aStarGraph(SimpleTileGraph);
 			auto Result = aStarGraph.FindPath(_this->lastPosition, UpdatedPosition, SimpleTileGraph, aStarResult);

@@ -1,10 +1,9 @@
 #pragma once
-#include "Action.h"
 
 #include "MoveAction.generated.h"
 
 USTRUCT()
-struct FMoveAction : public FAction
+struct FMoveAction
 {
   GENERATED_BODY()
   

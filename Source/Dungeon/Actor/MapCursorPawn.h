@@ -15,7 +15,6 @@
 #include "lager/reader.hpp"
 #include "Logic/DungeonGameState.h"
 #include "Utility/StoreConnectedClass.hpp"
-#include "zug/transducer/cycle.hpp"
 #include "MapCursorPawn.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCursorEvent, FIntPoint);
@@ -76,7 +75,7 @@ struct TCycleArrayIterator
     if(iteratee.IsEmpty())
       return {};
     
-    return { iteratee[previousIndex] };
+    return { iteratee[currentIndex] };
   }
   
   TOptional<TElement> Previous() 
@@ -84,7 +83,7 @@ struct TCycleArrayIterator
     if(iteratee.IsEmpty())
       return {};
       
-    return { iteratee[previousIndex] };
+    return { iteratee[currentIndex] };
   }
 };
 

@@ -23,7 +23,7 @@ const auto gameLens = attr(&ADungeonGameModeBase::store)
   | SimpleCastTo<FDungeonWorldState>;
 
 const auto mapLens = gameLens
-  | attr(&FDungeonWorldState::map);
+  | attr(&FDungeonWorldState::Map);
 
 const auto turnStateLens = gameLens
   | attr(&FDungeonWorldState::TurnState);
@@ -59,8 +59,8 @@ const auto isMainMenuLens =
                         
 const auto getUnitAtPointLens = [](const FIntPoint& pt)
 {
-  return attr(&FDungeonWorldState::map)
-    | attr(&FDungeonLogicMap::unitAssignment)
+  return attr(&FDungeonWorldState::Map)
+    | attr(&FDungeonLogicMap::UnitAssignment)
     | Find(pt);
 };
 
@@ -68,12 +68,12 @@ const auto cursorPositionLens = attr(&FDungeonWorldState::CursorPosition);
 
 const auto unitIdToPosition = [](int unitId)
 {
-  using unitAssign_t = GET_TYPE_OF(&FDungeonLogicMap::unitAssignment);
+  using unitAssign_t = GET_TYPE_OF(&FDungeonLogicMap::UnitAssignment);
   using ReturnType = unitAssign_t::KeyType;
 
   return SimpleCastTo<FDungeonWorldState>
-    | attr(&FDungeonWorldState::map)
-    | attr(&FDungeonLogicMap::unitAssignment)
+    | attr(&FDungeonWorldState::Map)
+    | attr(&FDungeonLogicMap::UnitAssignment)
     | lager::lenses::getset(
       [unitId](unitAssign_t&& map)
       {
@@ -94,8 +94,8 @@ const auto unitIdToActor = [](int unitId)
 
 const auto unitDataLens = [](int id)
 {
-  return attr(&FDungeonWorldState::map)
-    | attr(&FDungeonLogicMap::loadedUnits)
+  return attr(&FDungeonWorldState::Map)
+    | attr(&FDungeonLogicMap::LoadedUnits)
     | Find(id);
 };
 
@@ -113,3 +113,14 @@ const auto getUnitUnderCursor =
 
                           return lager::view(unitDataLens(*v), m);
                         }, [](auto m, auto) { return m; });
+
+namespace Dungeon
+{
+  namespace Selectors
+  {
+    const auto GetUnitIdUnderCursor = [&](const FDungeonWorldState& m)
+    {
+      return lager::view(getUnitAtPointLens(lager::view(cursorPositionLens, m)), m);
+    };
+  }
+}

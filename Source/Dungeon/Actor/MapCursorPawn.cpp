@@ -61,41 +61,43 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
 void AMapCursorPawn::BeginPlay()
 {
   Super::BeginPlay();
-  UseEvent().AddLambda([&](const TDungeonAction& variant)
-  {
-    if (variant.IsType<FBackAction>())
-    {
-      cycler = TCycleArrayIterator<FIntPoint>();
-      RootComponent->SetWorldLocation(TilePositionToWorldPoint(UseViewState(cursorPositionLens)));
-    }
 
-    if (variant.IsType<FChangeState>()
-      && variant.Get<FChangeState>().newState.IsType<FSelectingUnitAbilityTarget>()
-      && variant.Get<FChangeState>().newState.Get<FSelectingUnitAbilityTarget>().abilityId == EAbilityId::IdAttack)
+  auto handleChangeState = [&](const FChangeState& = {})
+  {
+    auto maybeTargeting = UseViewState(interactionContextLens | unreal_alternative<FSelectingUnitAbilityTarget>);
+    if (maybeTargeting.IsSet() && maybeTargeting->abilityId == EAbilityId::IdAttack)
     {
       TSet<FIntPoint> IntPoints = GetInteractablePositions(reader.get());
       cycler = TCycleArrayIterator(zug::unreal::into(TArray<FIntPoint>{}, zug::identity, IntPoints));
     }
-  });
+  };
+  
+  UseEvent().AddLambda(Dungeon::MatchEffect(
+    [&, handleChangeState](const FBackAction&)
+    {
+      handleChangeState();
+      RootComponent->SetWorldLocation(TilePositionToWorldPoint(UseViewState(cursorPositionLens)));
+    },
+    handleChangeState 
+  ));
   
   reader = UseState(SimpleCastTo<FDungeonWorldState>).make();
-  reader.bind([&](const FDungeonWorldState& model)
-  {
-    Visit(lager::visitor{
-            [&](auto context)
-            {
-              using TContext = decltype(context);
-              if constexpr (isInGuiControlledState<TContext>())
-              {
-                MovementComponent->SetActive(false);
-              }
-              else
-              {
-                MovementComponent->SetActive(true);
-              }
-            },
-          }, model.InteractionContext);
-  });
+  reader.bind(zug::comp(Dungeon::Match
+      (
+        [&](const auto& context)
+        {
+          using TContext = decltype(context);
+          if constexpr (isInGuiControlledState<TContext>())
+          {
+            MovementComponent->SetActive(false);
+          }
+          else
+          {
+            MovementComponent->SetActive(true);
+          }
+        }
+      )())
+    | [](auto&& model) { return model.InteractionContext; }); 
 }
 
 void AMapCursorPawn::Tick(float DeltaTime)
@@ -133,24 +135,6 @@ inline FVector4 AMapCursorPawn::ConvertInputToCameraPlaneInput(FVector inputVect
   return FMatrix(planeOrthoganal, planeForward, FVector::ZeroVector, FVector::ZeroVector).TransformVector(inputVector);
 }
 
-void AMapCursorPawn::MoveRight(float Value)
-{
-  auto context = UseViewState(interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(attr( &FSelectingUnitAbilityTarget::abilityId)) );
-  if (!(context.has_value() && context.value() == EAbilityId::IdAttack ))
-  {
-    AddMovementInput(ConvertInputToCameraPlaneInput(FVector{Value, 0.0, 0.0}));
-  }
-}
-
-void AMapCursorPawn::MoveUp(float Value)
-{
-  auto context = UseViewState(interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(attr( &FSelectingUnitAbilityTarget::abilityId)) );
-  if (!(context.has_value() && context.value() == EAbilityId::IdAttack ))
-  {
-    AddMovementInput(ConvertInputToCameraPlaneInput(FVector{0.0, Value, 0.0}));
-  }
-}
-
 void AMapCursorPawn::RotateCamera(float Value)
 {
   if (Value != 0.0)
@@ -168,6 +152,25 @@ void AMapCursorPawn::CycleZoom()
 void AMapCursorPawn::Query()
 {
   StoreDispatch(TDungeonAction(TInPlaceType<FCursorQueryTarget>{}, CurrentPosition));
+}
+
+//TODO this is horrible
+void AMapCursorPawn::MoveRight(float Value)
+{
+  auto context = UseViewState(interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(attr( &FSelectingUnitAbilityTarget::abilityId)) );
+  if (!(context.has_value() && context.value() == EAbilityId::IdAttack ))
+  {
+    AddMovementInput(ConvertInputToCameraPlaneInput(FVector{Value, 0.0, 0.0}));
+  }
+}
+
+void AMapCursorPawn::MoveUp(float Value)
+{
+  auto context = UseViewState(interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(attr( &FSelectingUnitAbilityTarget::abilityId)) );
+  if (!(context.has_value() && context.value() == EAbilityId::IdAttack ))
+  {
+    AddMovementInput(ConvertInputToCameraPlaneInput(FVector{0.0, Value, 0.0}));
+  }
 }
 
 void AMapCursorPawn::Next()
@@ -202,11 +205,27 @@ void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 {
   Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-  PlayerInputComponent->BindAction("Next", EInputEvent::IE_Pressed , this, &AMapCursorPawn::Next).bConsumeInput = false;
-  PlayerInputComponent->BindAction("Previous", EInputEvent::IE_Pressed , this, &AMapCursorPawn::Previous).bConsumeInput = false;
+  auto useDiscreteTargeting = [&]
+  {
+    auto& bindNext = PlayerInputComponent->BindAction("Next", EInputEvent::IE_Pressed, this, &AMapCursorPawn::Next);
+    bindNext.bConsumeInput = false;
+    auto& bindPrevious = PlayerInputComponent->BindAction("Previous", EInputEvent::IE_Pressed , this, &AMapCursorPawn::Previous);
+    bindPrevious.bConsumeInput = false;
+
+    return [&]
+    {
+      [&](auto& ...bindings)
+      {
+        (PlayerInputComponent->RemoveActionBindingForHandle(bindings.GetHandle()), ...);
+      }(bindNext, bindPrevious);
+    };
+  };
+  
+  useDiscreteTargeting();
   
   PlayerInputComponent->BindAxis(GMoveRight, this, &AMapCursorPawn::MoveRight);
   PlayerInputComponent->BindAxis(GMoveUp, this, &AMapCursorPawn::MoveUp);
+  
   PlayerInputComponent->BindAxis(GCameraRotate, this, &AMapCursorPawn::RotateCamera);
   PlayerInputComponent->BindAction(GQuery, EInputEvent::IE_Pressed, this, &AMapCursorPawn::Query);
   PlayerInputComponent->BindAction(GZoom, EInputEvent::IE_Pressed, this, &AMapCursorPawn::CycleZoom);

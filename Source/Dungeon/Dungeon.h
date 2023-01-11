@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "lager/store.hpp"
+#include <lager/store.hpp>
 #include "Logic/DungeonGameState.h"
 
 //TODO: Devise a plan for super generic stuff 
@@ -89,12 +89,48 @@ using TDungeonStore = lager::store<TStoreAction, FHistoryModel>;
 namespace Dungeon
 {
 	const auto identity = [](auto&& x) {};
-	
-	const auto MatchEffect = [](auto&&... values)
+
+	const auto Match = [](auto&& catchAllFunction)
 	{
-		return [values...](auto&& evt)
+		return [catchAllFunction](auto&&... values)
 		{
-			Visit(TDungeonVisitor{Dungeon::identity, values...}, evt);
+			return [catchAllFunction,values...](auto&& evt)
+			{
+				return Visit(TDungeonVisitor{catchAllFunction, values...}, evt);
+			};
 		};
 	};
+	
+	const auto MatchEffect = Match(identity);
 }
+
+template <typename ...T>
+struct ActionCreator;
+
+template<typename ...T>
+struct ActionCreator<TVariant<T...>> : public ActionCreator<T...>
+{
+	using ActionCreator<T...>::operator();
+};
+
+template<>
+struct ActionCreator<>
+{
+	decltype(auto) operator()()
+	{
+		return TDungeonAction(TInPlaceType<FEmptyVariantState>{});
+	};
+};
+
+template <typename T, typename ...TRest>
+struct ActionCreator<T,TRest...> : public ActionCreator<TRest...>
+{
+	using ActionCreator<TRest...>::operator();
+	
+	decltype(auto) operator()(T&& t)
+	{
+		return TDungeonAction(TInPlaceType<T>{}, Forward<T>(t));	
+	}
+};
+
+static auto CreateDungeonAction = ActionCreator<TDungeonAction>{};

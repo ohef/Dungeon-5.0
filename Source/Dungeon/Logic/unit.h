@@ -95,6 +95,7 @@ struct FDungeonLogicUnitRow : public FTableRowBase
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   FDungeonLogicUnit unitData;
+  
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   TSubclassOf<ADungeonUnitActor> UnrealActor;
 };
