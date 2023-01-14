@@ -6,6 +6,8 @@
 #include <lager/store.hpp>
 #include "Logic/DungeonGameState.h"
 
+#include "Dungeon.generated.h"
+
 //TODO: Devise a plan for super generic stuff 
 
 struct FDungeonWorldState;
@@ -15,7 +17,7 @@ struct FMainMenu;
 
 DECLARE_EVENT_OneParam(AMapCursorPawn, FQueryInput, FIntPoint);
 
-template <typename T, typename ...TArgs>
+template <typename T, typename... TArgs>
 struct TIsInTypeUnion
 {
 	enum { Value = TOr<TIsSame<T, TArgs>...>::Value };
@@ -33,15 +35,23 @@ using TDungeonVisitor = lager::visitor<Ts...>;
 using TStoreAction = TDungeonAction;
 using TModelType = FDungeonWorldState;
 
+USTRUCT()
 struct FHistoryModel
 {
-	TModelType committedState;
-	TArray<TModelType> undoStack;
+	GENERATED_BODY()
 
-	FHistoryModel() : committedState(TModelType()){
-	}
+	UPROPERTY(VisibleAnywhere)
+	FDungeonWorldState committedState;
 	
-	FHistoryModel(const TModelType& m) : committedState(m){
+	UPROPERTY(VisibleAnywhere)
+	TArray<FDungeonWorldState> undoStack;
+
+	FHistoryModel() : committedState(TModelType())
+	{
+	}
+
+	FHistoryModel(const TModelType& m) : committedState(m)
+	{
 	}
 
 	bool CanGoBack()
@@ -49,7 +59,8 @@ struct FHistoryModel
 		return !undoStack.IsEmpty();
 	}
 
-	auto& Commit(){
+	auto& Commit()
+	{
 		if (!undoStack.IsEmpty())
 		{
 			undoStack.Empty();
@@ -57,7 +68,7 @@ struct FHistoryModel
 		return *this;
 	}
 
-	auto& CurrentState() 
+	auto& CurrentState()
 	{
 		return committedState;
 	}
@@ -88,7 +99,9 @@ using TDungeonStore = lager::store<TStoreAction, FHistoryModel>;
 
 namespace Dungeon
 {
-	const auto identity = [](auto&& x) {};
+	const auto identity = [](auto&& x)
+	{
+	};
 
 	const auto Match = [](auto&& catchAllFunction)
 	{
@@ -100,20 +113,20 @@ namespace Dungeon
 			};
 		};
 	};
-	
+
 	const auto MatchEffect = Match(identity);
 }
 
-template <typename ...T>
+template <typename... T>
 struct ActionCreator;
 
-template<typename ...T>
+template <typename... T>
 struct ActionCreator<TVariant<T...>> : public ActionCreator<T...>
 {
 	using ActionCreator<T...>::operator();
 };
 
-template<>
+template <>
 struct ActionCreator<>
 {
 	decltype(auto) operator()()
@@ -122,14 +135,14 @@ struct ActionCreator<>
 	};
 };
 
-template <typename T, typename ...TRest>
-struct ActionCreator<T,TRest...> : public ActionCreator<TRest...>
+template <typename T, typename... TRest>
+struct ActionCreator<T, TRest...> : public ActionCreator<TRest...>
 {
 	using ActionCreator<TRest...>::operator();
-	
+
 	decltype(auto) operator()(T&& t)
 	{
-		return TDungeonAction(TInPlaceType<T>{}, Forward<T>(t));	
+		return TDungeonAction(TInPlaceType<T>{}, Forward<T>(t));
 	}
 };
 

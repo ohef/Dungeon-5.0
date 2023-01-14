@@ -10,18 +10,26 @@
 
 #include "DungeonMapEditor.generated.h"
 
+using TDungeonEditorStore = lager::store<TStoreAction, FDungeonWorldState>;
 
-UCLASS()
-class UEditorModel : public UObject
+UCLASS(BlueprintType)
+class UMapDataHolder : public UDataAsset
 {
 	GENERATED_BODY()
 
 public:
 	UPROPERTY(EditAnywhere)
-	FDungeonLogicUnit DungeonLogicUnit;
+	FDungeonLogicMap map;
 };
 
-using TDungeonEditorStore = lager::store<TStoreAction, FDungeonWorldState>;
+USTRUCT()
+struct FTileData
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere)
+	UMapDataHolder* dataThing;
+};
 
 class SDungeonEditor : public SCompoundWidget, public FNotifyHook
 {
@@ -65,9 +73,8 @@ class SDungeonEditor : public SCompoundWidget, public FNotifyHook
 
 	TUniquePtr<TDungeonEditorStore> editorStore;
 
-	TStrongObjectPtr<UEditorModel> ContextModel;
-
-	TSharedPtr<IDetailsView> CSVtoSVGArgumentsDetailsView = nullptr;
 	TSharedPtr<IStructureDetailsView> StructPropEditor;
-	TSharedPtr<TStructOnScope<FDungeonLogicUnit>> StructOnScope;
+	TSharedPtr<TStructOnScope<FDungeonLogicUnit>> UnitOnScope;
+	// TSharedRef<IDetailsView> ClassDetailsView;
+	TSharedPtr<TStructOnScope<FTileData>> DataOnScope;
 };

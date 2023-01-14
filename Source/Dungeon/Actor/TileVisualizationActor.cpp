@@ -31,59 +31,76 @@ void ATileVisualizationActor::BeginPlay()
 
 	contextCursor = UseState(interactionContextLens).make();
 	contextCursor.bind(Dungeon::MatchEffect(
-		[&](const FSelectingUnitContext& context)
-		{
-			if (this->TileVisualizationComponent == nullptr)
+			[&](const FSelectingUnitAbilityTarget& context)
 			{
-				return;
-			}
+				const auto& model = this->UseViewState();
+				if ( model.WaitingForResolution.IsType<FMoveAction>() )
+				{					
+					this->TileVisualizationComponent->Clear();
 
-			this->TileVisualizationComponent->Clear();
+					auto [MovementPoints,AttackPoints] = GetInteractionFields(
+						model, model.WaitingForResolution.Get<FMoveAction>().InitiatorId);
 
-			const auto& model = this->UseViewState();
-			TOptional<FDungeonLogicUnit> unit = lager::view(getUnitUnderCursor, model);
-
-			if (unit.IsSet())
+					this->TileVisualizationComponent->ShowTiles(MovementPoints, FLinearColor::Blue);
+					this->TileVisualizationComponent->ShowTiles(AttackPoints.Difference(MovementPoints),
+					                                            FLinearColor::Red);
+				}
+			},
+			[&](const FSelectingUnitContext& context)
 			{
-				auto [MovementPoints,AttackPoints] = GetInteractionFields(model, unit->Id);
-				this->TileVisualizationComponent->ShowTiles(MovementPoints,
-				                                            FLinearColor::Blue);
-				this->TileVisualizationComponent->ShowTiles(AttackPoints.Difference(MovementPoints),
-				                                            FLinearColor::Red);
-			}
-		},
-		[&](const FUnitMenu& menu)
-		{
-			if (this->TileVisualizationComponent == nullptr)
-			{
-				return;
-			}
+				if (this->TileVisualizationComponent == nullptr)
+				{
+					return;
+				}
 
-			const auto& model = this->UseViewState();
-
-			if (menu.focusedAbilityName == FName("Move"))
-			{
 				this->TileVisualizationComponent->Clear();
 
-				auto [MovementPoints,AttackPoints] = GetInteractionFields(model, menu.unitId);
+				const auto& model = this->UseViewState();
+				TOptional<FDungeonLogicUnit> unit = lager::view(getUnitUnderCursor, model);
 
-				this->TileVisualizationComponent->ShowTiles(MovementPoints, FLinearColor::Blue);
-				this->TileVisualizationComponent->ShowTiles(AttackPoints.Difference(MovementPoints), FLinearColor::Red);
-			}
-
-			if (menu.focusedAbilityName == FName("Attack"))
+				if (unit.IsSet())
+				{
+					auto [MovementPoints,AttackPoints] = GetInteractionFields(model, unit->Id);
+					this->TileVisualizationComponent->ShowTiles(MovementPoints,
+					                                            FLinearColor::Blue);
+					this->TileVisualizationComponent->ShowTiles(AttackPoints.Difference(MovementPoints),
+					                                            FLinearColor::Red);
+				}
+			},
+			[&](const FUnitMenu& menu)
 			{
-				auto attackTiles = manhattanReachablePoints(
-					model.Map.Width,
-					model.Map.Height,
-					lager::view(unitIdToData(menu.unitId), model).attackRange,
-					lager::view(unitIdToPosition(menu.unitId), model));
+				if (this->TileVisualizationComponent == nullptr)
+				{
+					return;
+				}
 
-				this->TileVisualizationComponent->Clear();
-				this->TileVisualizationComponent->ShowTiles(attackTiles, FLinearColor::Red);
+				const auto& model = this->UseViewState();
+
+				if (menu.focusedAbilityName == FName("Move"))
+				{
+					this->TileVisualizationComponent->Clear();
+
+					auto [MovementPoints,AttackPoints] = GetInteractionFields(model, menu.unitId);
+
+					this->TileVisualizationComponent->ShowTiles(MovementPoints, FLinearColor::Blue);
+					this->TileVisualizationComponent->ShowTiles(AttackPoints.Difference(MovementPoints),
+					                                            FLinearColor::Red);
+				}
+
+				if (menu.focusedAbilityName == FName("Attack"))
+				{
+					auto attackTiles = manhattanReachablePoints(
+						model.Map.Width,
+						model.Map.Height,
+						lager::view(unitIdToData(menu.unitId), model).attackRange,
+						lager::view(unitIdToPosition(menu.unitId), model));
+
+					this->TileVisualizationComponent->Clear();
+					this->TileVisualizationComponent->ShowTiles(attackTiles, FLinearColor::Red);
+				}
 			}
-		}
-	));
+		)
+	);
 }
 
 // Called every frame

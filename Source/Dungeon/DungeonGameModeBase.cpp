@@ -6,17 +6,12 @@
 #include "Logic/DungeonGameState.h"
 #include "SingleSubmitHandler.h"
 #include "Actor/DungeonPlayerController.h"
-#include "Actor/MapCursorPawn.h"
 #include "Actor/TileVisualizationActor.h"
 #include "DungeonUnitActor.h"
 #include "Widget/DungeonMainWidget.h"
-#include "GraphAStar.h"
-#include "Algo/FindLast.h"
-#include "Blueprint/WidgetTree.h"
+#include "JsonObjectConverter.h"
 #include "Engine/DataTable.h"
 #include "GameFramework/GameStateBase.h"
-#include "immer/map.hpp"
-#include "Kismet/KismetSystemLibrary.h"
 #include "lager/event_loop/manual.hpp"
 #include "lager/store.hpp"
 #include "lager/util.hpp"
@@ -74,6 +69,14 @@ void ADungeonGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	FPropertyEditorModule& PropertyEditorModule = FModuleManager::Get().GetModuleChecked<FPropertyEditorModule>(
+		"PropertyEditor");
+
+	ViewingModel = NewObject<UViewingModel>(this);
+	viewingModels.Add(ViewingModel);
+	ModelViewingWindow = PropertyEditorModule.CreateFloatingDetailsView(viewingModels, false);
+	ModelViewingWindow->ShowWindow();
+
 	TArray<FDungeonLogicUnitRow*> unitsArray;
 	UnitTable->GetAllRows(TEXT(""), unitsArray);
 	TMap<int, FDungeonLogicUnitRow> loadedUnitTypes;
@@ -81,6 +84,30 @@ void ADungeonGameModeBase::BeginPlay()
 	{
 		loadedUnitTypes.Add(unit->unitData.Id, *unit);
 	}
+
+	auto Filename = FPaths::Combine(FPaths::ProjectDir(), TEXT("MapLevel.json"));
+
+	FString readJsonFile;
+	FFileHelper::LoadFileToString(readJsonFile, ToCStr(Filename));
+
+	FDungeonLogicMap testa;
+	FJsonObjectConverter::JsonObjectStringToUStruct(readJsonFile, &testa);
+
+	auto hey =
+		FDungeonLogicMap{
+			.Width = 10, .Height = 10,
+			.TileAssignment = {
+				{{1, 2}, 12},
+				{{3, 1}, 1}
+			}
+		};
+
+	FString output;
+	FJsonObjectConverter::UStructToJsonObjectString(hey, output);
+
+	FJsonObjectConverter::JsonObjectStringToUStruct(output, &hey);
+
+	FFileHelper::SaveStringToFile(output, ToCStr(Filename));
 
 	FString StuffR;
 	FString TheStr = FPaths::Combine(FPaths::ProjectDir(), TEXT("theBoard.csv"));
@@ -132,27 +159,34 @@ void ADungeonGameModeBase::BeginPlay()
 		FHistoryModel(this->Game),
 		lager::with_manual_event_loop{},
 		WithUndoReducer(WorldStateReducer),
-		WithGlobalEventMiddleware(*this)
+		WithGlobalEventMiddleware(*this),
+		[this](auto next)
+		{
+			return [this,next](auto action,
+			                   auto&& model,
+			                   auto&& reducer,
+			                   auto&& loop,
+			                   auto&& deps,
+			                   auto&& tags)
+			{
+				return next(action,
+				            LAGER_FWD(model),
+				            [reducer, this](auto&& m, auto&& a) -> decltype(reducer(LAGER_FWD(m), LAGER_FWD(a)))
+				            {
+					            auto&& [updatedModel, oldEffect] = reducer(LAGER_FWD(m), LAGER_FWD(a));
+				            	// this->ViewingModel->currentModel = updatedModel;
+					            return { updatedModel, oldEffect };
+				            },
+				            LAGER_FWD(loop),
+				            LAGER_FWD(deps),
+				            LAGER_FWD(tags));
+			};
+		}
 	)));
 
 	for (auto UnitIdToActor : static_cast<const FDungeonWorldState>(store->get()).unitIdToActor)
 	{
 		UnitIdToActor.Value->HookIntoStore();
-	}
-
-	FString Result;
-	FString Str = FPaths::Combine(FPaths::ProjectDir(), TEXT("UnitIds.csv"));
-	if (FFileHelper::LoadFileToString(Result, ToCStr(Str)))
-	{
-		UDataTable* DataTable = NewObject<UDataTable>();
-		DataTable->RowStruct = FStructThing::StaticStruct();
-		DataTable->CreateTableFromCSVString(Result);
-		TArray<FStructThing*> wow;
-		DataTable->GetAllRows<FStructThing>(TEXT("wew"), wow);
-		FStructThing* StructThing = DataTable->FindRow<FStructThing>(FName(TEXT("1")), TEXT("wow"));
-		FString TableAsCSV = DataTable->GetTableAsCSV();
-		FFileHelper::SaveStringToFile(
-			TableAsCSV, ToCStr(FPaths::Combine(FPaths::ProjectDir(), TEXT("UnitIdsOutput.csv"))));
 	}
 
 	FActorSpawnParameters params;

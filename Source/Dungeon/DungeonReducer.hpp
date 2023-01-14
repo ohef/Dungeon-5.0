@@ -333,13 +333,13 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 		 Model.InteractionContext.Set<FSelectingUnitContext>(FSelectingUnitContext());
 		 return {Model, lager::noop};
 	 },
-	 [&](FCursorPositionUpdated& cpeEvent) -> FDungeonReducerResult
+	 [&](FCursorPositionUpdated& action) -> FDungeonReducerResult
 	 {
-		 Visit(FCursorPositionUpdatedHandler(Model, cpeEvent.cursorPosition), Model.InteractionContext);
-		 Model.CursorPosition = cpeEvent.cursorPosition;
+		 Visit(FCursorPositionUpdatedHandler(Model, action.cursorPosition), Model.InteractionContext);
+		 Model.CursorPosition = action.cursorPosition;
 		 return {Model, lager::noop};
 	 },
-	 [&](FMoveAction& MoveAction)-> FDungeonReducerResult
+	 [&](FMoveAction& MoveAction) -> FDungeonReducerResult
 	 {
 		 FDungeonLogicMap& DungeonLogicMap = Model.Map;
 		 DungeonLogicMap.UnitAssignment.Remove(

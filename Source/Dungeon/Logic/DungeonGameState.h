@@ -1,7 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include <JsonUtilities/Public/JsonUtilities.h>
 
 #include "map.h"
 #include "TargetsAvailableId.h"
@@ -17,82 +16,81 @@ using UnitId = int;
 
 struct FTurnState
 {
-  int teamId;
-  TSet<int> unitsFinished;
+	int teamId;
+	TSet<int> unitsFinished;
 };
 
 USTRUCT()
 struct FUnitInteraction
 {
-  friend bool operator==(const FUnitInteraction& Lhs, const FUnitInteraction& RHS)
-  {
-    return Lhs.targetIDUnderFocus == RHS.targetIDUnderFocus
-      && Lhs.originatorID == RHS.originatorID;
-  }
+	friend bool operator==(const FUnitInteraction& Lhs, const FUnitInteraction& RHS)
+	{
+		return Lhs.targetIDUnderFocus == RHS.targetIDUnderFocus
+			&& Lhs.originatorID == RHS.originatorID;
+	}
 
-  friend bool operator!=(const FUnitInteraction& Lhs, const FUnitInteraction& RHS)
-  {
-    return !(Lhs == RHS);
-  }
+	friend bool operator!=(const FUnitInteraction& Lhs, const FUnitInteraction& RHS)
+	{
+		return !(Lhs == RHS);
+	}
 
-  GENERATED_BODY()
+	GENERATED_BODY()
 
-  int targetIDUnderFocus;
-  int originatorID;
+	int targetIDUnderFocus;
+	int originatorID;
 };
 
 USTRUCT()
 struct FMainMenu
 {
-  GENERATED_BODY()
+	GENERATED_BODY()
 };
 
 USTRUCT()
 struct FSelectingUnitContext
 {
-  GENERATED_BODY()
-  
+	GENERATED_BODY()
+
 private:
-  auto SetupTMap()
-  {
-    TMap<ETargetsAvailableId, TSet<FIntPoint>> map;
-    map.Add(ETargetsAvailableId::move, TSet<FIntPoint>());
-    map.Add(ETargetsAvailableId::attack, TSet<FIntPoint>());
-    return map;
-  }
-  
+	auto SetupTMap()
+	{
+		TMap<ETargetsAvailableId, TSet<FIntPoint>> map;
+		map.Add(ETargetsAvailableId::move, TSet<FIntPoint>());
+		map.Add(ETargetsAvailableId::attack, TSet<FIntPoint>());
+		return map;
+	}
+
 public:
-  FSelectingUnitContext() : unitUnderCursor(TOptional<UnitId>()), interactionTiles(SetupTMap())
-  {
-  }
+	FSelectingUnitContext() : unitUnderCursor(TOptional<UnitId>()), interactionTiles(SetupTMap())
+	{
+	}
 
-  TOptional<UnitId> unitUnderCursor;
-  TMap<ETargetsAvailableId, TSet<FIntPoint>> interactionTiles;
-
+	TOptional<UnitId> unitUnderCursor;
+	TMap<ETargetsAvailableId, TSet<FIntPoint>> interactionTiles;
 };
 
 USTRUCT()
 struct FUnitMenu
 {
-  GENERATED_BODY()
-  
-  int unitId;
-  TSet<FName> deactivatedAbilities;
-  FName focusedAbilityName;
+	GENERATED_BODY()
+
+	int unitId;
+	TSet<FName> deactivatedAbilities;
+	FName focusedAbilityName;
 };
 
 enum EAbilityId
 {
-  IdMove = 1,
-  IdAttack,
+	IdMove = 1,
+	IdAttack,
 };
 
 USTRUCT()
 struct FSelectingUnitAbilityTarget
 {
-  GENERATED_BODY()
-  
-  int abilityId;
+	GENERATED_BODY()
+
+	int abilityId;
 };
 
 struct FBackAction
@@ -101,26 +99,26 @@ struct FBackAction
 
 struct FCursorPositionUpdated
 {
-  FIntPoint cursorPosition;
+	FIntPoint cursorPosition;
 };
 
 using TInteractionContext = TVariant<
-  FSelectingUnitContext,
-  FMainMenu,
-  FUnitInteraction,
-  FUnitMenu,
-  FSelectingUnitAbilityTarget
+	FSelectingUnitContext,
+	FMainMenu,
+	FUnitInteraction,
+	FUnitMenu,
+	FSelectingUnitAbilityTarget
 >;
 
 struct FChangeState
 {
-  TInteractionContext newState;
+	TInteractionContext newState;
 };
 
 using TStepAction = TVariant<
-  FEmptyVariantState,
-  FMoveAction,
-  FCombatAction
+	FEmptyVariantState,
+	FMoveAction,
+	FCombatAction
 >;
 
 struct FSteppedAction
@@ -131,7 +129,7 @@ struct FSteppedAction
 
 struct FCursorQueryTarget
 {
-  FIntPoint target;
+	FIntPoint target;
 };
 
 struct FCommitAction
@@ -142,49 +140,51 @@ struct FCheckPoint
 {
 };
 
-struct FFocusChanged {
-  FName focusName;
+struct FFocusChanged
+{
+	FName focusName;
 };
 
 struct FSpawnUnit
 {
-  FIntPoint position;
-  FDungeonLogicUnit unit;
+	FIntPoint position;
+	FDungeonLogicUnit unit;
 };
 
 using TDungeonAction = TVariant<
-  FEmptyVariantState,
-  FSpawnUnit,
-  FInteractionResults,
-  FSteppedAction,
-  FCursorQueryTarget,
-  FChangeState,
-  FCursorPositionUpdated,
-  FMoveAction,
-  FCombatAction,
-  FEndTurnAction,
-  FBackAction,
-  FWaitAction,
-  FCommitAction,
-  FFocusChanged
+	FEmptyVariantState,
+	FSpawnUnit,
+	FInteractionResults,
+	FSteppedAction,
+	FCursorQueryTarget,
+	FChangeState,
+	FCursorPositionUpdated,
+	FMoveAction,
+	FCombatAction,
+	FEndTurnAction,
+	FBackAction,
+	FWaitAction,
+	FCommitAction,
+	FFocusChanged
 >;
 
 USTRUCT()
 struct FDungeonWorldState
 {
-  GENERATED_BODY()
+	GENERATED_BODY()
 
-  FTurnState TurnState;
+	FTurnState TurnState;
 
-  TStepAction WaitingForResolution;
-  TArray<TInteractionContext> InteractionsToResolve;
-  TInteractionContext InteractionContext;
-  
-  FIntPoint CursorPosition;
+	TStepAction WaitingForResolution;
+	TArray<TInteractionContext> InteractionsToResolve;
+	TInteractionContext InteractionContext;
 
-  UPROPERTY(EditAnywhere)
-  FDungeonLogicMap Map;
+	UPROPERTY(EditAnywhere)
+	FIntPoint CursorPosition;
 
-  UPROPERTY(EditAnywhere)
-  TMap<int, TWeakObjectPtr<ADungeonUnitActor>> unitIdToActor;
+	UPROPERTY(EditAnywhere)
+	FDungeonLogicMap Map;
+
+	UPROPERTY(EditAnywhere)
+	TMap<int, TWeakObjectPtr<ADungeonUnitActor>> unitIdToActor;
 };

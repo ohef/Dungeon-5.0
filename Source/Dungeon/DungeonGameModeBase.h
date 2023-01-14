@@ -28,39 +28,39 @@ struct ProgramState;
 USTRUCT(BlueprintType)
 struct FAbilityParams : public FTableRowBase
 {
-  GENERATED_BODY()
+	GENERATED_BODY()
 
-  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Dungeon)
-  UMaterialInstance* coloring;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Dungeon)
+	UMaterialInstance* coloring;
 };
 
 USTRUCT()
 struct FStructThing : public FTableRowBase
 {
-  GENERATED_BODY()
+	GENERATED_BODY()
 
-  UPROPERTY(EditAnywhere, BlueprintReadOnly)
-  int ID;
-  UPROPERTY(EditAnywhere, BlueprintReadOnly)
-  int HP;
-  UPROPERTY(EditAnywhere, BlueprintReadOnly)
-  int Movement;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	int ID;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	int HP;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	int Movement;
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCombatActionEvent, FCombatAction, action);
 
 struct FCoerceToFText
 {
-  template <typename T>
-  static typename TEnableIf<TIsArithmetic<T>::Value, FText>::Type Value(T thing)
-  {
-    return FText::AsNumber(thing);
-  }
+	template <typename T>
+	static typename TEnableIf<TIsArithmetic<T>::Value, FText>::Type Value(T thing)
+	{
+		return FText::AsNumber(thing);
+	}
 
-  static FText Value(FString thing)
-  {
-    return FText::FromString(thing);
-  }
+	static FText Value(FString thing)
+	{
+		return FText::FromString(thing);
+	}
 };
 
 #define CREATE_GETTER_FOR_PROPERTY(managedPointer, fieldName) \
@@ -70,85 +70,102 @@ FText Get##managedPointer####fieldName() const \
 }
 
 UCLASS()
-class DUNGEON_API ADungeonGameModeBase : public AGameModeBase, public FStoreConnectedClass<ADungeonGameModeBase, TDungeonAction>
+class UViewingModel : public UObject
 {
-  GENERATED_BODY()
-
-  ADungeonGameModeBase(const FObjectInitializer& ObjectInitializer);
+	GENERATED_BODY()
 
 public:
-  virtual void BeginPlay() override;
-  virtual void Tick(float time) override;
-  void Dispatch(TDungeonAction&& unionAction);
+	UPROPERTY(VisibleAnywhere)
+	FHistoryModel currentModel ;
+};
 
-  DECLARE_MULTICAST_DELEGATE_OneParam(TDungeonActionDispatched, const TDungeonAction& )
-  TDungeonActionDispatched DungeonActionDispatched;
+UCLASS()
+class DUNGEON_API ADungeonGameModeBase : public AGameModeBase,
+                                         public FStoreConnectedClass<ADungeonGameModeBase, TDungeonAction>
+{
+	GENERATED_BODY()
 
-  FText GetCurrentTurnId() const;
+	ADungeonGameModeBase(const FObjectInitializer& ObjectInitializer);
 
-  UPROPERTY(EditAnywhere)
-  TSubclassOf<UUserWidget> MenuClass;
-  UPROPERTY(EditAnywhere)
-  UClass* TileShowPrefab;
-  UPROPERTY(EditAnywhere)
-  FDungeonWorldState Game;
-  UPROPERTY(EditAnywhere)
-  UClass* UnitActorPrefab;
-  UPROPERTY(EditAnywhere)
-  UDataTable* UnitTable;
-  UPROPERTY(EditAnywhere)
-  TMap<TEnumAsByte<ETargetsAvailableId>, FAbilityParams> TargetsColoring;
-  UPROPERTY(BlueprintAssignable)
-  FCombatActionEvent CombatActionEvent;
-  UPROPERTY()
-  UDungeonMainWidget* MainWidget;
-  
-  UPROPERTY()
-  UTileVisualizationComponent* TileVisualizationComponent;
-  UPROPERTY(EditAnywhere, BlueprintReadWrite)
-  UTileVisualizationComponent* MovementVisualization;
+public:
+	virtual void BeginPlay() override;
+	virtual void Tick(float time) override;
+	void Dispatch(TDungeonAction&& unionAction);
 
-  UPROPERTY(VisibleAnywhere)
-  USingleSubmitHandler* SingleSubmitHandler;
+	DECLARE_MULTICAST_DELEGATE_OneParam(TDungeonActionDispatched, const TDungeonAction&)
+	TDungeonActionDispatched DungeonActionDispatched;
 
-  TUniquePtr<FDungeonLogicUnit> LastSeenUnitUnderCursor;
-  FTextBlockStyle style;
-  TSubclassOf<UDungeonMainWidget> MainWidgetClass;
-  TQueue<TUniquePtr<FTimeline>> AnimationQueue;
-  TUniquePtr<TDungeonStore> store;
-  lager::reader<TInteractionContext> interactionReader;
+	TArray<UObject*> viewingModels;
+	
+	UPROPERTY()
+	UViewingModel* ViewingModel;
+	TSharedPtr<SWindow> ModelViewingWindow;
 
-  template <typename T>
-  void SubmitLinearAnimation(T* movable, FIntPoint from, FIntPoint to, float time)
-  {
-    auto timeline = MakeUnique<FTimeline>();
-    FOnTimelineVectorStatic onUpdate;
-    FOnTimelineEventStatic onFinish;
-    UCurveVector* curve = NewObject<UCurveVector>();
-    from = from * 100;
-    to = to * 100;
-    curve->FloatCurves[0].AddKey(0.0, from.X);
-    curve->FloatCurves[0].AddKey(time, to.X);
-    curve->FloatCurves[1].AddKey(0.0, from.Y);
-    curve->FloatCurves[1].AddKey(time, to.Y);
+	FText GetCurrentTurnId() const;
 
-    onUpdate.BindLambda([movable](FVector interp)
-    {
-      if constexpr (TIsDerivedFrom<T, AActor>::Value)
-        movable->SetActorLocation(interp, false);
-      else
-        movable->SetWorldLocation(interp, false);
-    });
+	UPROPERTY(EditAnywhere)
+	TSubclassOf<UUserWidget> MenuClass;
+	UPROPERTY(EditAnywhere)
+	UClass* TileShowPrefab;
+	UPROPERTY(EditAnywhere)
+	FDungeonWorldState Game;
+	UPROPERTY(EditAnywhere)
+	UClass* UnitActorPrefab;
+	UPROPERTY(EditAnywhere)
+	UDataTable* UnitTable;
+	UPROPERTY(EditAnywhere)
+	TMap<TEnumAsByte<ETargetsAvailableId>, FAbilityParams> TargetsColoring;
+	UPROPERTY(BlueprintAssignable)
+	FCombatActionEvent CombatActionEvent;
+	UPROPERTY()
+	UDungeonMainWidget* MainWidget;
 
-    onFinish.BindLambda([this]()
-    {
-      this->AnimationQueue.Pop();
-    });
+	UPROPERTY()
+	UTileVisualizationComponent* TileVisualizationComponent;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UTileVisualizationComponent* MovementVisualization;
 
-    timeline->SetTimelineFinishedFunc(onFinish);
-    timeline->AddInterpVector(curve, onUpdate);
-    timeline->Play();
+	UPROPERTY(VisibleAnywhere)
+	USingleSubmitHandler* SingleSubmitHandler;
 
-    this->AnimationQueue.Enqueue(MoveTemp(timeline));
-  }
+	TUniquePtr<FDungeonLogicUnit> LastSeenUnitUnderCursor;
+	FTextBlockStyle style;
+	TSubclassOf<UDungeonMainWidget> MainWidgetClass;
+	TQueue<TUniquePtr<FTimeline>> AnimationQueue;
+	TUniquePtr<TDungeonStore> store;
+	lager::reader<TInteractionContext> interactionReader;
+
+	template <typename T>
+	void SubmitLinearAnimation(T* movable, FIntPoint from, FIntPoint to, float time)
+	{
+		auto timeline = MakeUnique<FTimeline>();
+		FOnTimelineVectorStatic onUpdate;
+		FOnTimelineEventStatic onFinish;
+		UCurveVector* curve = NewObject<UCurveVector>();
+		from = from * 100;
+		to = to * 100;
+		curve->FloatCurves[0].AddKey(0.0, from.X);
+		curve->FloatCurves[0].AddKey(time, to.X);
+		curve->FloatCurves[1].AddKey(0.0, from.Y);
+		curve->FloatCurves[1].AddKey(time, to.Y);
+
+		onUpdate.BindLambda([movable](FVector interp)
+		{
+			if constexpr (TIsDerivedFrom<T, AActor>::Value)
+				movable->SetActorLocation(interp, false);
+			else
+				movable->SetWorldLocation(interp, false);
+		});
+
+		onFinish.BindLambda([this]()
+		{
+			this->AnimationQueue.Pop();
+		});
+
+		timeline->SetTimelineFinishedFunc(onFinish);
+		timeline->AddInterpVector(curve, onUpdate);
+		timeline->Play();
+
+		this->AnimationQueue.Enqueue(MoveTemp(timeline));
+	}
 };

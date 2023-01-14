@@ -4,45 +4,32 @@ using UnrealBuildTool;
 
 public class DungeonEditor : ModuleRules
 {
-	public DungeonEditor(ReadOnlyTargetRules Target) : base(Target)
-	{
-		CppStandard = CppStandardVersion.Cpp20;
-		OptimizeCode = CodeOptimization.Never;
-		
-		PublicDependencyModuleNames.AddRange(
-			new string[] { "Dungeon", 
-				//"DataTableEditor"
-				//, "UnrealEd" 
-			}
-		);
+  public DungeonEditor(ReadOnlyTargetRules Target) : base(Target)
+  {
+    CppStandard = CppStandardVersion.Cpp20;
+    OptimizeCode = CodeOptimization.Never;
 
-		PrivateDependencyModuleNames.AddRange(
-			new string[] {"UnrealEd", 
-                                "DataTableEditor", 
-								"Core",
-                				"CoreUObject",
-                                "Json",
-                                "JsonUtilities",
-                				//"ApplicationCore",
-                				//"Engine",
-                                //"InputCore",
-                				"Slate",
-                				"SlateCore",
-                                //"EditorStyle",
-                                //"PropertyEditor",
-                				//"EditorFramework",
-                				//"Json"
-                				
-				// "Core", "Slate", "SlateCore", "UMG", "UMGEditor", "CoreUObject" 
-			}
-		);
+    PublicDependencyModuleNames.AddRange(
+        new string[] { "Dungeon" }
+        );
 
-		PrivateIncludePathModuleNames.AddRange( new string[] { } );
+    PrivateDependencyModuleNames.AddRange(
+        new string[] {"UnrealEd", 
+        "Engine",
+        "DataTableEditor", 
+        "Core",
+        "CoreUObject",
+        "Json",
+        "JsonUtilities",
+        "Slate",
+        "SlateCore", "EditorScriptingUtilities",
+        }
+        );
 
-		PrivateIncludePaths.AddRange(new string[] {$"../Source/Dungeon/ThirdParty", "../Source/Dungeon"});
-		
-		// PublicIncludePaths.AddRange(new string[] {$"../Dungeon/ThirdParty", "Dungeon"});
+    PrivateIncludePathModuleNames.AddRange( new string[] { } );
 
-		DynamicallyLoadedModuleNames.AddRange( new string[] { } );
-	}
+    PrivateIncludePaths.AddRange(new string[] {$"../Source/Dungeon/ThirdParty", "../Source/Dungeon"});
+
+    DynamicallyLoadedModuleNames.AddRange( new string[] { } );
+  }
 }

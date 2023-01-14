@@ -3,8 +3,6 @@
 #include "Actor/MapCursorPawn.h"
 
 #include <Kismet/KismetMathLibrary.h>
-#include <Kismet/KismetSystemLibrary.h>
-#include <Engine/StaticMeshActor.h>
 #include <Core/Public/Containers/Array.h>
 
 #include "DungeonConstants.h"
@@ -67,7 +65,10 @@ void AMapCursorPawn::BeginPlay()
     auto maybeTargeting = UseViewState(interactionContextLens | unreal_alternative<FSelectingUnitAbilityTarget>);
     if (maybeTargeting.IsSet() && maybeTargeting->abilityId == EAbilityId::IdAttack)
     {
-      TSet<FIntPoint> IntPoints = GetInteractablePositions(reader.get());
+      auto interactionPosition =
+        UseViewState(unitIdToPosition(UseViewState( attr(&FDungeonWorldState::WaitingForResolution) | unreal_alternative<FCombatAction> | ignoreOptional).InitiatorId));
+
+      TSet<FIntPoint> IntPoints = GetInteractablePositionsUsingTarget(reader.get(), interactionPosition);
       cycler = TCycleArrayIterator(zug::unreal::into(TArray<FIntPoint>{}, zug::identity, IntPoints));
     }
   };
@@ -82,22 +83,20 @@ void AMapCursorPawn::BeginPlay()
   ));
   
   reader = UseState(SimpleCastTo<FDungeonWorldState>).make();
-  reader.bind(zug::comp(Dungeon::Match
-      (
-        [&](const auto& context)
+  reader.bind(Dungeon::Match(
+      [&](const auto& context)
+      {
+        using TContext = decltype(context.InteractionContext);
+        if constexpr (isInGuiControlledState<TContext>())
         {
-          using TContext = decltype(context);
-          if constexpr (isInGuiControlledState<TContext>())
-          {
-            MovementComponent->SetActive(false);
-          }
-          else
-          {
-            MovementComponent->SetActive(true);
-          }
+          MovementComponent->SetActive(false);
         }
-      )())
-    | [](auto&& model) { return model.InteractionContext; }); 
+        else
+        {
+          MovementComponent->SetActive(true);
+        }
+      }
+    )()); 
 }
 
 void AMapCursorPawn::Tick(float DeltaTime)
