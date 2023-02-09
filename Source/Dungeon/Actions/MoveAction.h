@@ -5,24 +5,25 @@
 USTRUCT()
 struct FMoveAction
 {
-  GENERATED_BODY()
-  
-  int InitiatorId;
-  FIntPoint Destination;
+	GENERATED_BODY()
 
-  FMoveAction(int ID, const FIntPoint& Destination)
-    : InitiatorId(ID),
-      Destination(Destination)
-  {
-  }
+	UPROPERTY()
+	int InitiatorId;
+	UPROPERTY()
+	FIntPoint Destination;
 
-  FMoveAction(int InitiatorId)
-    : FMoveAction(InitiatorId, {0, 0})
-  {
-  }
+	FMoveAction(int ID, const FIntPoint& Destination)
+		: InitiatorId(ID),
+		  Destination(Destination)
+	{
+	}
 
-  FMoveAction() : FMoveAction(0) {
-  }
-  
+	FMoveAction(int InitiatorId)
+		: FMoveAction(InitiatorId, {0, 0})
+	{
+	}
+
+	FMoveAction() : FMoveAction(0)
+	{
+	}
 };
-

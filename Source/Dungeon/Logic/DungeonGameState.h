@@ -90,7 +90,7 @@ struct FSelectingUnitAbilityTarget
 {
 	GENERATED_BODY()
 
-	int abilityId;
+	EAbilityId abilityId;
 };
 
 struct FBackAction

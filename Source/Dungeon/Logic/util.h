@@ -2,6 +2,11 @@
 
 #include <CoreMinimal.h>
 
+inline decltype(auto) manhattanDistance(const FIntPoint& vectorPoint)
+{
+  return FGenericPlatformMath::Abs(vectorPoint.X) + FGenericPlatformMath::Abs(vectorPoint.Y);
+}
+
 template <template<typename> typename TContainer = TSet>
 TContainer<FIntPoint> manhattanReachablePoints(int xLimit, int yLimit, int distance, const FIntPoint& point)
 {
@@ -22,8 +27,7 @@ TContainer<FIntPoint> manhattanReachablePoints(int xLimit, int yLimit, int dista
     {
       FIntPoint currentPoint = {i, j};
       FIntPoint vectorPoint = FIntPoint(point) - currentPoint;
-      bool withinManhattanRange = FGenericPlatformMath::Abs(vectorPoint.X) + FGenericPlatformMath::Abs(vectorPoint.Y) <=
-        distanceHalved;
+      bool withinManhattanRange = manhattanDistance(vectorPoint) <= distanceHalved;
       if (withinManhattanRange)
       {
         toReturn.Add(FIntPoint(i, j));

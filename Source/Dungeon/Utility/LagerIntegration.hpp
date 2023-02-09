@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "DSP/MidiNoteQuantizer.h"
 #include "zug/compose.hpp"
 
 template <typename T>
@@ -124,6 +125,20 @@ const auto getter = [](auto member)
 	});
 };
 
+template <typename T>
+struct TIsOptionall
+{
+	const static bool Value = false;
+};
+
+template <typename T>
+struct TIsOptionall<TOptional<T>>
+{
+	const static bool Value = true;
+	using Type = T;
+};
+
+
 template <typename Key>
 auto Find(Key key)
 {
@@ -131,7 +146,8 @@ auto Find(Key key)
 	{
 		return [f = LAGER_FWD(f), &key](auto&& whole)
 		{
-			using Part = TOptional<std::decay_t<decltype(*(whole.Find(key)))>>;
+			using InnerValue = std::decay_t<decltype(*(whole.Find(key)))>;
+			using Part = TOptional<InnerValue>;
 			using Whole = decltype(whole);
 			return f([&]() -> Part
 			{
@@ -140,14 +156,14 @@ auto Find(Key key)
 					return *LAGER_FWD(whole).Find(key);
 				}
 				return Part();
-			}())([&](Part part)
+			}())([&](auto&& part) -> decltype(auto)
 			{
-				auto r = std::forward<Whole>(whole);
+				auto r = whole;
 				if (part.IsSet())
 				{
 					if constexpr (TIsTMap<typename TDecay<Whole>::Type>::Value)
 					{
-						r.Emplace(key, std::forward<Part>(part).GetValue());
+						r.Emplace(key, Part::ElementType(part.GetValue()));
 					}
 				}
 				return r;
@@ -162,7 +178,7 @@ constexpr auto ignoreOptional = zug::comp([](auto&& f)
 	{
 		using Part = typename TDecay<decltype(p.GetValue())>::Type;
 		return f(Part(LAGER_FWD(p).GetValue()))(
-			[&](auto&& x) { return TOptional<std::decay_t<decltype(p)>>(LAGER_FWD(x)); });
+			[&](auto&& x) { return TOptional(LAGER_FWD(x)); });
 	};
 });
 

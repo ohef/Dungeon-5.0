@@ -100,6 +100,7 @@ protected:
 
   void MoveRight(float Value);
   void MoveUp(float Value);
+  void Cycle(TOptional<FIntPoint> (TCycleArrayIterator<FIntPoint>::*directionFunction)());
   void RotateCamera(float Value);
   void Query();
   void Next();

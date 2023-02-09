@@ -19,15 +19,17 @@ struct FDungeonLogicUnit : public FTableRowBase
 {
   GENERATED_BODY()
 
-  FDungeonLogicUnit(): Id(0), damage(0), HitPoints(0), state(), Movement(0), teamId(0), attackRange(0)
+  FDungeonLogicUnit(): Id(0), damage(0), HitPoints(0), HitPointsTotal(0), state(), Movement(0), teamId(0),
+                       attackRange(0)
   {
   }
 
   FDungeonLogicUnit(int Id, int Damage, int HitPoints, const TEnumAsByte<UnitState>& State, const FString& Name,
-    int Movement, int TeamId, int AttackRange)
+                    int Movement, int TeamId, int AttackRange)
     : Id(Id),
       damage(Damage),
       HitPoints(HitPoints),
+      HitPointsTotal(HitPoints),
       state(State),
       Name(Name),
       Movement(Movement),
@@ -44,6 +46,9 @@ struct FDungeonLogicUnit : public FTableRowBase
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   int HitPoints;
+  
+  UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
+  int HitPointsTotal;
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   TEnumAsByte<UnitState> state;

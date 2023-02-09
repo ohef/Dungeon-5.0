@@ -2,6 +2,7 @@
 
 #include "SimpleCastTo.hpp"
 #include "Dungeon/Utility/LagerIntegration.hpp"
+#include "GenericPlatform/GenericPlatformMisc.h"
 #include "lager/lenses/attr.hpp"
 #include "lager/lenses.hpp"
 
@@ -12,115 +13,128 @@ M get_member_type(M T::*);
 using namespace lager::lenses;
 
 const auto gameLens = attr(&ADungeonGameModeBase::store)
-  | deref
-  | lager::lenses::getset([](auto&& x)
-                          {
-                            return LAGER_FWD(x.get());
-                          }, [](auto&& x)
-                          {
-                            return x;
-                          })
-  | SimpleCastTo<FDungeonWorldState>;
+	| deref
+	| lager::lenses::getset([](auto&& x)
+	                        {
+		                        return LAGER_FWD(x.get());
+	                        }, [](auto&& x)
+	                        {
+		                        return x;
+	                        })
+	| SimpleCastTo<FDungeonWorldState>;
 
 const auto mapLens = gameLens
-  | attr(&FDungeonWorldState::Map);
+	| attr(&FDungeonWorldState::Map);
 
 const auto turnStateLens = gameLens
-  | attr(&FDungeonWorldState::TurnState);
-  
+	| attr(&FDungeonWorldState::TurnState);
+
 const auto isUnitFinishedLens = [&](int id)
 {
-  return turnStateLens
-    | attr(&FTurnState::unitsFinished)
-    | Find(id);
+	return turnStateLens
+		| attr(&FTurnState::unitsFinished)
+		| Find(id);
 };
 
 const auto isUnitFinishedLens2 = [&](int id)
 {
-  return attr(&FDungeonWorldState::TurnState)
-    | attr(&FTurnState::unitsFinished)
-    | Find(id);
+	return attr(&FDungeonWorldState::TurnState)
+		| attr(&FTurnState::unitsFinished)
+		| Find(id);
 };
 
 const auto gameModeLens =
-  getter(&UWorld::GetAuthGameMode<ADungeonGameModeBase>)
-  | deref;
+	getter(&UWorld::GetAuthGameMode<ADungeonGameModeBase>)
+	| deref;
 
 const auto worldStoreLens = gameModeLens
-  | lager::lenses::attr(&ADungeonGameModeBase::store);
+	| lager::lenses::attr(&ADungeonGameModeBase::store);
 
 const auto interactionContextLens =
-  SimpleCastTo<FDungeonWorldState>
-  | lager::lenses::attr(&FDungeonWorldState::InteractionContext);
+	SimpleCastTo<FDungeonWorldState>
+	| lager::lenses::attr(&FDungeonWorldState::InteractionContext);
 
 const auto isMainMenuLens =
-  interactionContextLens
-  | unreal_alternative<FMainMenu>;
-                        
+	interactionContextLens
+	| unreal_alternative<FMainMenu>;
+
 const auto getUnitAtPointLens = [](const FIntPoint& pt)
 {
-  return attr(&FDungeonWorldState::Map)
-    | attr(&FDungeonLogicMap::UnitAssignment)
-    | Find(pt);
+	return attr(&FDungeonWorldState::Map)
+		| attr(&FDungeonLogicMap::UnitAssignment)
+		| Find(pt);
 };
 
 const auto cursorPositionLens = attr(&FDungeonWorldState::CursorPosition);
 
 const auto unitIdToPosition = [](int unitId)
 {
-  using unitAssign_t = GET_TYPE_OF(&FDungeonLogicMap::UnitAssignment);
-  using ReturnType = unitAssign_t::KeyType;
+	using unitAssign_t = GET_TYPE_OF(&FDungeonLogicMap::UnitAssignment);
+	using ReturnType = unitAssign_t::KeyType;
 
-  return SimpleCastTo<FDungeonWorldState>
-    | attr(&FDungeonWorldState::Map)
-    | attr(&FDungeonLogicMap::UnitAssignment)
-    | lager::lenses::getset(
-      [unitId](unitAssign_t&& map)
-      {
-        return *map.FindKey(unitId);
-      },
-      [](unitAssign_t&& map, unitAssign_t::KeyType&& positionToSet)
-      {
-        return ReturnType();
-      });
+	return SimpleCastTo<FDungeonWorldState>
+		| attr(&FDungeonWorldState::Map)
+		| attr(&FDungeonLogicMap::UnitAssignment)
+		| lager::lenses::getset(
+			[unitId](unitAssign_t&& map)
+			{
+				try
+				{
+					return *map.FindKey(unitId);
+				}
+				catch (...)
+				{
+					UE_DEBUG_BREAK();
+					return FIntPoint();
+				}
+			},
+			[](unitAssign_t&& map, unitAssign_t::KeyType&& positionToSet)
+			{
+				return ReturnType();
+			});
 };
 
 const auto unitIdToActor = [](int unitId)
 {
-  return SimpleCastTo<FDungeonWorldState>
-             | attr(&FDungeonWorldState::unitIdToActor) 
-             | Find(unitId);
+	return SimpleCastTo<FDungeonWorldState>
+		| attr(&FDungeonWorldState::unitIdToActor)
+		| Find(unitId);
 };
 
 const auto unitDataLens = [](int id)
 {
-  return attr(&FDungeonWorldState::Map)
-    | attr(&FDungeonLogicMap::LoadedUnits)
-    | Find(id);
+	return attr(&FDungeonWorldState::Map)
+		| attr(&FDungeonLogicMap::LoadedUnits)
+		| Find(id);
 };
 
 const auto unitIdToData = [](int id)
 {
-  return unitDataLens(id) | ignoreOptional;
+	return unitDataLens(id) | ignoreOptional;
 };
 
 const auto getUnitUnderCursor =
-  lager::lenses::getset([&](const FDungeonWorldState& m) -> TOptional<FDungeonLogicUnit> 
-                        {
-                          TOptional<int> v = lager::view(getUnitAtPointLens(lager::view(cursorPositionLens, m)), m);
-                          if(!v.IsSet())
-                            return {};
+	lager::lenses::getset([&](const FDungeonWorldState& m) -> TOptional<FDungeonLogicUnit>
+	                      {
+		                      TOptional<int> v = lager::view(getUnitAtPointLens(lager::view(cursorPositionLens, m)), m);
+		                      if (!v.IsSet())
+			                      return {};
 
-                          return lager::view(unitDataLens(*v), m);
-                        }, [](auto m, auto) { return m; });
+		                      return lager::view(unitDataLens(*v), m);
+	                      }, [](auto m, auto) { return m; });
 
 namespace Dungeon
 {
-  namespace Selectors
-  {
-    const auto GetUnitIdUnderCursor = [&](const FDungeonWorldState& m)
-    {
-      return lager::view(getUnitAtPointLens(lager::view(cursorPositionLens, m)), m);
-    };
-  }
+	namespace Selectors
+	{
+		const auto GetUnitIdUnderCursor = [&](const FDungeonWorldState& m)
+		{
+			return lager::view(getUnitAtPointLens(lager::view(cursorPositionLens, m)), m);
+		};
+		
+		const auto GetAllUnits = [&](const FDungeonWorldState& m)
+		{
+			return lager::view(getUnitAtPointLens(lager::view(cursorPositionLens, m)), m);
+		};
+	}
 }

@@ -64,7 +64,7 @@ public:
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   ESlateVisibility MapMenuVisibility;
 
-  TArray<TFunction<void()>> contextUpdates;
+  TArray<TFunction<void()>> ActionChecks;
   
   UFUNCTION()
   void OnEndTurnClicked();

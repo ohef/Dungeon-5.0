@@ -9,12 +9,11 @@
 #include "Algo/ForEach.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "Kismet/KismetSystemLibrary.h"
 #include "lager/lenses/tuple.hpp"
 #include "Lenses/model.hpp"
 #include "Logic/SimpleTileGraph.h"
 #include "Utility/HookFunctor.hpp"
-#include "zug/detail/lambda_wrapper.hpp"
+#include "Widget/HealthBarWidget.h"
 
 // Sets default values
 ADungeonUnitActor::ADungeonUnitActor()
@@ -24,27 +23,39 @@ ADungeonUnitActor::ADungeonUnitActor()
 
 	static ConstructorHelpers::FClassFinder<UDamageWidget> DamageWidgetClasss(
 		TEXT("/Game/Blueprints/Widgets/DamageWidget"));
+	static ConstructorHelpers::FClassFinder<UHealthBarWidget> HealthBarWidegtClasss(
+		TEXT("/Game/Blueprints/Widgets/HealthBar"));
+	static ConstructorHelpers::FObjectFinderOptional<UMaterial> HealthBarMateriall(
+		TEXT("Material'/Game/Blueprints/Widgets/HealthBarMaterial.HealthBarMaterial'"));
+
+	static ConstructorHelpers::FObjectFinder<UMaterialInstance> Team1(
+		TEXT("MaterialInstanceConstant'/Game/Blueprints/Team1.Team1'"));
+
+	UnitIndicatorMaterial = Team1.Object;
 
 	this->UnitIndicatorMesh =
-		ConstructorHelpers::FObjectFinder<UStaticMesh> (TEXT("StaticMesh'/Game/untitled_category/untitled_asset/Circle.Circle'")).Object;
-		
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Team1(
-		TEXT("MaterialInstanceConstant'/Game/Blueprints/Team1.Team1'"));
-	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Team2(
-		TEXT("MaterialInstanceConstant'/Game/Blueprints/Team2.Team2'"));
-	this->UnitTeamMaterials.Add(Team1.Object);
-	this->UnitTeamMaterials.Add(Team2.Object);
-	
+		ConstructorHelpers::FObjectFinder<UStaticMesh>(
+			TEXT("StaticMesh'/Game/untitled_category/untitled_asset/Circle.Circle'")).Object;
+
 	DamageWidgetClass = DamageWidgetClasss.Class;
 	InterpToMovementComponent = CreateDefaultSubobject<UInterpToMovementComponent>(TEXT("InterpToMovementComponent"));
-	this->RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent")); 
+	this->RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
 	PathRotation = CreateDefaultSubobject<USceneComponent>(TEXT("PathRotation"));
 	PathRotation->AttachToComponent(this->RootComponent,
 	                                FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
 
+	HealthBarMaterial = HealthBarMateriall.Get();
+	HealthBarComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("WidgetComponent"));
+	HealthBarComponent->SetWidgetClass(HealthBarWidegtClasss.Class);
+	HealthBarComponent->SetupAttachment(PathRotation);
+	HealthBarComponent->SetWorldTransform(FTransform{FRotator::ZeroRotator, FVector{0, 0, 0}});
+	HealthBarComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	HealthBarComponent->SetDrawAtDesiredSize(true);
+
 	UnitIndicatorMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("UnitIndicatorMeshComponent "));
 	UnitIndicatorMeshComponent->SetStaticMesh(UnitIndicatorMesh);
-	UnitIndicatorMeshComponent->AttachToComponent(PathRotation, FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
+	UnitIndicatorMeshComponent->AttachToComponent(PathRotation,
+	                                              FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
 	UnitIndicatorMeshComponent->SetWorldTransform(FTransform{FRotator::ZeroRotator, FVector{0, 0, 0.1}});
 }
 
@@ -53,46 +64,57 @@ void ADungeonUnitActor::BeginPlay()
 {
 	Super::BeginPlay();
 
-	auto damageWidgetToAdd = NewObject<UDamageWidget>(this, DamageWidgetClass);
-	DamageWidget = damageWidgetToAdd;
+	HealthBarMaterialDynamic = UMaterialInstanceDynamic::Create(HealthBarMaterial, this, "HealthBarMaterialDynamic");
+	UnitIndicatorDynamic = UMaterialInstanceDynamic::Create(UnitIndicatorMaterial, this, "UnitIndicatorDynamic");
+	UnitIndicatorMeshComponent->SetMaterial(0, UnitIndicatorDynamic);
+
+	DamageWidget = NewObject<UDamageWidget>(this, DamageWidgetClass);
 	DamageWidget->SetPlayerContext(FLocalPlayerContext(this->GetWorld()->GetFirstPlayerController()));
 	DamageWidget->Initialize();
 	DamageWidget->AddToViewport();
 	DamageWidget->SetVisibility(ESlateVisibility::Collapsed);
+
+	auto HealthBarWidgett = Cast<UHealthBarWidget>(HealthBarComponent->GetWidget());
+	HealthBarWidgett->HealthBarDisplay->SetBrushFromMaterial(HealthBarMaterialDynamic);
 }
 
 void ADungeonUnitActor::HookIntoStore()
 {
 	reader = UseState(lager::lenses::fan(unitIdToData(id), unitIdToPosition(id), isUnitFinishedLens2(id)))
-	.make();
+		.make();
 
 	UseEvent().AddUObject(this, &ADungeonUnitActor::HandleGlobalEvent);
 
-	auto [unit,x,y] = reader.get();
+	static const TMap<int, FLinearColor> teamColorMap = {{0, FLinearColor::Blue}, {1, FLinearColor::Red}};
 
-	UnitIndicatorMeshComponent->SetMaterial(0, UnitTeamMaterials[unit.teamId - 1].Get());
-	
 	lastPosition = lager::view(second, reader.get());
 	reader.bind(TPreviousHookFunctor<decltype(reader)::value_type>(
 		reader.get(),
-		[&](auto&& previousReaderVal, auto&& ReaderVal)
+		[this](auto&& previousReaderVal, auto&& ReaderVal)
 		{
-			FDungeonLogicUnit DungeonLogicUnit = lager::view(first, ReaderVal);
-			FIntPoint UpdatedPosition = lager::view(second, previousReaderVal);
-			lastPosition = UpdatedPosition;
-			DungeonLogicUnit.state = lager::view(element<2>, ReaderVal).IsSet()
+			auto [DungeonLogicUnit, UpdatedPosition , isFinished] = ReaderVal;
+			lastPosition = lager::view(second,previousReaderVal) ;
+			DungeonLogicUnit.state = isFinished.IsSet()
 				                         ? UnitState::ActionTaken
 				                         : UnitState::Free;
+
+			UnitIndicatorDynamic->SetVectorParameterValue(
+				"Color", isFinished.IsSet()
+				? FLinearColor::Gray
+				: teamColorMap.FindChecked(DungeonLogicUnit.teamId - 1));
+			HealthBarMaterialDynamic->SetScalarParameterValue(
+				"HealthFraction",
+				DungeonLogicUnit.HitPoints / static_cast<float>(DungeonLogicUnit.HitPointsTotal));
 
 			this->React(DungeonLogicUnit);
 			return ReaderVal;
 		}));
 }
 
-const auto getId = zug::comp([](FDungeonLogicUnit x) { return x.Id; });
+const auto getId = [](FDungeonLogicUnit x) { return x.Id; };
 
 template <size_t N>
-const auto getElement = zug::comp([](auto x) { return std::get<N>(x); }); 
+const auto getElement = zug::comp([](auto x) { return std::get<N>(x); });
 
 const auto getThisId = getId | getElement<0>;
 
@@ -100,10 +122,11 @@ struct FDungeonUnitActorHandler
 {
 	ADungeonUnitActor* _this;
 
-
 	//Sink function; just does nothing
 	template <typename T>
-	void operator()(T){}
+	void operator()(T)
+	{
+	}
 
 	void operator()(const FChangeState& event)
 	{
@@ -113,8 +136,8 @@ struct FDungeonUnitActorHandler
 	void operator()(const FCombatAction& event)
 	{
 		auto thisId = getThisId(*_this->reader);
-		
-		if (event.updatedUnit.Id == thisId)
+
+		if (event.targetedUnit == thisId)
 		{
 			FVector2D ScreenPosition;
 			const FIntPoint& IntPoint = lager::view(second, _this->reader.get());
@@ -171,8 +194,8 @@ struct FDungeonUnitActorHandler
 	{
 		FVector Start = TilePositionToWorldPoint(_this->UseViewState(unitIdToPosition(newState.originatorID)));
 		FVector Target = TilePositionToWorldPoint(_this->UseViewState(unitIdToPosition(newState.targetIDUnderFocus)));
-		int thisId = *_this->reader.zoom(first | attr( &FDungeonLogicUnit::Id)).make();
-		
+		int thisId = *_this->reader.zoom(first | attr(&FDungeonLogicUnit::Id)).make();
+
 		if (thisId == newState.originatorID)
 		{
 			FRotator NewRotation = UKismetMathLibrary::FindLookAtRotation(Start, Target);

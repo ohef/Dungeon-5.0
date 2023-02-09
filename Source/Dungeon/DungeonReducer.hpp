@@ -167,7 +167,6 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 			 auto damage = DungeonView(unitDataLens(waitingAction.InitiatorId))->damage
 				 - floor((0.05 * action[0].order));
 
-			 waitingAction.updatedUnit.HitPoints -= damage;
 			 waitingAction.damageValue = damage;
 
 			 Model.InteractionsToResolve.Pop();
@@ -238,9 +237,8 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				   if (isInRange && isUnitThere &&
 					   isTargetNotOnTheSameTeam)
 				   {
-					   waitingAction.target = actionTarget.target;
-					   waitingAction.updatedUnit = targetedUnit.
-						   GetValue();
+					   waitingAction.targetedUnit = targetedUnit->Id;
+				   	
 					   Model.InteractionsToResolve.Pop();
 
 					   auto val = Model.InteractionsToResolve.Top().
@@ -354,12 +352,15 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 		 FDungeonLogicUnit& foundUnit = Model.Map.LoadedUnits.FindChecked(action.InitiatorId);
 		 Model.TurnState.unitsFinished.Add(foundUnit.Id);
 
-		 FDungeonLogicUnit& Unit = action.updatedUnit;
-		 Unit.state = DungeonView(isUnitFinishedLens2(Unit.Id)).IsSet()
-			              ? UnitState::ActionTaken
-			              : UnitState::Free;
-		 Model = lager::set(unitDataLens(Unit.Id), Model, action.updatedUnit);
+		 Model = lager::over(unitIdToData(action.targetedUnit), Model, [&](FDungeonLogicUnit Unit)
+		 {
+			 Unit.state = UnitState::ActionTaken;
+			 Unit.HitPoints -= action.damageValue;
+			 return Unit;
+		 });
+	 	
 		 Model.InteractionContext.Set<FSelectingUnitContext>({});
+	 	
 		 return {
 			 Model, [](auto& ctx)
 			 {
@@ -373,7 +374,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 		 return DefaultPassthrough(action);
 	 }
 	)(worldAction);
-};
+}
 
 template <typename ...TArgs>
 bool IsInTypeSet(const auto& variant)

@@ -10,8 +10,12 @@
 #include "DungeonUnitActor.h"
 #include "Widget/DungeonMainWidget.h"
 #include "JsonObjectConverter.h"
+#include "Algo/Accumulate.h"
 #include "Engine/DataTable.h"
+#include "Engine/StaticMeshActor.h"
 #include "GameFramework/GameStateBase.h"
+#include "Interfaces/IMainFrameModule.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "lager/event_loop/manual.hpp"
 #include "lager/store.hpp"
 #include "lager/util.hpp"
@@ -19,12 +23,190 @@
 #include "Logic/SimpleTileGraph.h"
 #include "Serialization/Csv/CsvParser.h"
 
+template <typename T>
+struct TIsOptional
+{
+	const static bool Value = false;
+};
+
+template <typename T>
+struct TIsOptional<TOptional<T>>
+{
+	const static bool Value = true;
+	using Type = T;
+};
+
+FReply UViewingModel::GenerateMoves()
+{
+	using namespace lager::lenses;
+	using namespace lager;
+
+	const FDungeonWorldState& initialState = currentModel;
+
+	// state.TurnState.teamId = 1;
+	auto aiTeamId = initialState.TurnState.teamId;
+	auto aiUnit = view(getUnitUnderCursor | ignoreOptional, initialState);
+	aiTeamId = aiUnit.teamId;
+
+	TMap<int, TSet<int>> TeamIdToUnitIds;
+
+	for (TTuple<int, FDungeonLogicUnit> LoadedUnit : initialState.Map.LoadedUnits)
+	{
+		int UnitTeamId = LoadedUnit.Value.teamId;
+		auto& TeamSet = TeamIdToUnitIds.FindOrAdd(UnitTeamId);
+		TeamSet.Add(LoadedUnit.Key);
+	}
+
+	auto aiUnitIds = TeamIdToUnitIds.FindAndRemoveChecked(aiTeamId);
+	auto enemyIds = Algo::TransformAccumulate(TeamIdToUnitIds, [](auto& x) { return x.Value; }, TSet<int>(),
+	                                          [](auto&& acc, auto&& y)
+	                                          {
+		                                          acc.Append(y);
+		                                          return acc;
+	                                          });
+
+	auto localView = [&](auto... lenses)
+	{
+		constexpr auto numberOfParams = sizeof...(lenses);
+		if constexpr (numberOfParams > 1)
+		{
+			return lager::view(fan(lenses...), initialState);
+		}
+		else
+		{
+			return lager::view(lenses..., initialState);
+		}
+	};
+
+	using TClosestDistanceAndUnitId = TTuple<int, int>;
+
+	//What the fuck
+	TArray<TArray<TClosestDistanceAndUnitId>> closestUnitMap = TArray<TArray<TClosestDistanceAndUnitId>>();
+	auto rowInit = TArray<TClosestDistanceAndUnitId>();
+	rowInit.Init(TClosestDistanceAndUnitId(), initialState.Map.Height);
+	closestUnitMap.Init(rowInit, initialState.Map.Height);
+
+	for (int i = 0; i < initialState.Map.Width; i++)
+	{
+		for (int j = 0; j < initialState.Map.Height; j++)
+		{
+			auto thisPt = FIntPoint{i, j};
+			TClosestDistanceAndUnitId minTuple = {INT_MAX, -1};
+
+			for (int enemyId : enemyIds)
+			{
+				auto currentTuple = TClosestDistanceAndUnitId{
+					manhattanDistance(thisPt - localView(unitIdToPosition(enemyId))), enemyId
+				};
+				minTuple = [](auto&& a, auto&& b) { return TLess<>{}(get<0>(a), get<0>(b)); }(currentTuple, minTuple)
+					           ? currentTuple
+					           : minTuple;
+			}
+
+			closestUnitMap[i][j] = minTuple;
+		}
+	}
+
+
+	// auto AIUnitId = aiUnit.Id;
+
+	for (int aiUnitId : aiUnitIds)
+	{
+		const FDungeonWorldState& state = **gm->store;
+		using TActionsTuple = TTuple<FMoveAction, TOptional<FCombatAction>>;
+		TArray<TActionsTuple> actions;
+
+		auto [aiPosition,aiUnitData] = lager::view(fan(unitIdToPosition(aiUnitId), unitDataLens(aiUnitId)),
+		                                           initialState);
+		auto interactablePoints = manhattanReachablePoints(
+			state.Map.Width - 1,
+			state.Map.Height - 1,
+			aiUnitData->Movement,
+			aiPosition);
+
+		for (FIntPoint movePoint : interactablePoints)
+		{
+			auto possibleUnit = view(getUnitAtPointLens(movePoint), state);
+			if (possibleUnit.IsSet() && *possibleUnit != aiUnitId)
+			{
+				continue;
+			}
+			auto zaTup = TActionsTuple(FMoveAction(aiUnitId, movePoint), TOptional<FCombatAction>());
+			auto& [moveA,optCombat] = zaTup;
+			const auto& [distance, unitId] = closestUnitMap[movePoint.X][movePoint.Y];
+
+			if (distance <= aiUnitData->attackRange)
+			{
+				optCombat = FCombatAction(aiUnitId, localView(unitDataLens(unitId))->Id, aiUnitData->damage);
+			}
+			actions.Add(zaTup);
+		}
+
+		Algo::Sort(actions, [&](TActionsTuple& a, TActionsTuple& b)
+		{
+			const auto& aPoint = a.Key.Destination;
+			const auto& bPoint = b.Key.Destination;
+
+			if (TEqualTo()(a.Value.IsSet(), b.Value.IsSet()))
+			{
+				if (TEqualTo()(closestUnitMap[aPoint.X][aPoint.Y].Key, closestUnitMap[bPoint.X][bPoint.Y].Key))
+					return TLess<>()((aiPosition - a.Key.Destination).Size(), (aiPosition - b.Key.Destination).Size());
+				else
+					return TLess<>()(closestUnitMap[aPoint.X][aPoint.Y].Key, closestUnitMap[bPoint.X][bPoint.Y].Key);
+			}
+			else
+			{
+				return !TLess<>{}(a.Value.IsSet(), b.Value.IsSet());
+			}
+		});
+
+		auto combatToDisp = TSet<FIntPoint>{};
+		auto moveToDisp = TSet<FIntPoint>{};
+
+		for (TActionsTuple Action : actions)
+		{
+			auto& [moveAct, combatAct] = Action;
+
+			// if ([](TActionsTuple x) { return x.Value.IsSet(); }(Action))
+			if (combatAct.IsSet())
+			{
+				combatToDisp.Add(moveAct.Destination);
+				// ([](TActionsTuple x) { return x.Key.Destination; }(Action));
+			}
+			else
+			{
+				moveToDisp.Add(moveAct.Destination);
+			}
+		}
+
+		// gm->TileVisualizationComponent->Clear();
+		// gm->TileVisualizationComponent->ShowTiles(combatToDisp, FLinearColor::Green);
+		// gm->TileVisualizationComponent->ShowTiles(moveToDisp, FLinearColor::Yellow);
+
+		[&](TActionsTuple tuple)
+		{
+			gm->Dispatch(MoveTemp(tuple.Key));
+
+			if (tuple.Value.IsSet())
+				gm->Dispatch(MoveTemp(*tuple.Value));
+			else
+				gm->Dispatch(FWaitAction{tuple.Key.InitiatorId});
+		}(MoveTemp(actions[0]));
+	}
+
+	return FReply::Handled();
+}
+
 ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectInitializer) :
 	Super(ObjectInitializer)
 {
 	static ConstructorHelpers::FClassFinder<UDungeonMainWidget> HandlerClass(
 		TEXT("/Game/Blueprints/Widgets/MainWidget"));
+	static ConstructorHelpers::FClassFinder<AStaticMeshActor> BlockingBorderActor(
+		TEXT("/Game/untitled_category/untitled_asset/BlockingBorderActor"));
+
 	MainWidgetClass = HandlerClass.Class;
+	BlockingBorderActorClass = BlockingBorderActor.Class;
 
 	PrimaryActorTick.bCanEverTick = true;
 	UnitTable = ObjectInitializer.CreateDefaultSubobject<UDataTable>(this, "Default");
@@ -33,7 +215,8 @@ ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectIniti
 
 #define DUNGEON_MOVE_LAMBDA(_x) _x = MoveTemp(_x)
 
-auto WithGlobalEventMiddleware(const ADungeonGameModeBase& gameMode)
+template <typename Fn>
+auto TapReducer(Fn&& effectFunction)
 {
 	return [&](auto next)
 	{
@@ -46,15 +229,16 @@ auto WithGlobalEventMiddleware(const ADungeonGameModeBase& gameMode)
 		{
 			return next(action,
 			            LAGER_FWD(model),
-			            [reducer, &gameMode](auto m, auto a) -> decltype(reducer(LAGER_FWD(m), LAGER_FWD(a)))
+			            [reducer, effectFunction](auto m, auto a) -> decltype(reducer(LAGER_FWD(m), LAGER_FWD(a)))
 			            {
 				            auto&& [updatedModel, oldEffect] = reducer(LAGER_FWD(m), LAGER_FWD(a));
 				            return {
-					            updatedModel, [ DUNGEON_MOVE_LAMBDA(oldEffect), DUNGEON_MOVE_LAMBDA(a), &gameMode ]
+					            updatedModel,
+					            [ DUNGEON_MOVE_LAMBDA(oldEffect), DUNGEON_MOVE_LAMBDA(a), effectFunction ]
 				            (auto&& ctx)
 					            {
 						            oldEffect(DUNGEON_FOWARD(ctx));
-						            gameMode.DungeonActionDispatched.Broadcast(a);
+						            effectFunction(a);
 					            }
 				            };
 			            },
@@ -65,6 +249,91 @@ auto WithGlobalEventMiddleware(const ADungeonGameModeBase& gameMode)
 	};
 }
 
+static bool ShouldShowProperty(const FPropertyAndParent& PropertyAndParent, bool bHaveTemplate)
+{
+	const FProperty& Property = PropertyAndParent.Property;
+
+	if (bHaveTemplate)
+	{
+		const UClass* PropertyOwnerClass = Property.GetOwner<const UClass>();
+		const bool bDisableEditOnTemplate = PropertyOwnerClass
+			&& PropertyOwnerClass->IsNative()
+			&& Property.HasAnyPropertyFlags(CPF_DisableEditOnTemplate);
+		if (bDisableEditOnTemplate)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+TSharedRef<SWindow> CreateFloatingDetailsView(const TArray<UViewingModel*>& InObjects,
+                                              bool bIsLockable)
+{
+	TSharedRef<SWindow> NewSlateWindow = SNew(SWindow)
+		.Title(NSLOCTEXT("PropertyEditor", "WindowTitle", "Property Editor"))
+		.ClientSize(FVector2D(400, 550));
+
+	// If the main frame exists parent the window to it
+	TSharedPtr<SWindow> ParentWindow;
+	if (FModuleManager::Get().IsModuleLoaded("MainFrame"))
+	{
+		IMainFrameModule& MainFrame = FModuleManager::GetModuleChecked<IMainFrameModule>("MainFrame");
+		ParentWindow = MainFrame.GetParentWindow();
+	}
+
+	if (ParentWindow.IsValid())
+	{
+		// Parent the window to the main frame 
+		FSlateApplication::Get().AddWindowAsNativeChild(NewSlateWindow, ParentWindow.ToSharedRef());
+	}
+	else
+	{
+		FSlateApplication::Get().AddWindow(NewSlateWindow);
+	}
+
+	FDetailsViewArgs Args;
+	Args.bHideSelectionTip = true;
+	Args.bLockable = bIsLockable;
+
+	FPropertyEditorModule& PropertyEditorModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>(
+		"PropertyEditor");
+	TSharedRef<IDetailsView> DetailView = PropertyEditorModule.CreateDetailView(Args);
+
+	bool bHaveTemplate = false;
+	for (int32 i = 0; i < InObjects.Num(); i++)
+	{
+		if (InObjects[i] != NULL && InObjects[i]->IsTemplate())
+		{
+			bHaveTemplate = true;
+			break;
+		}
+	}
+
+	DetailView->SetIsPropertyVisibleDelegate(FIsPropertyVisible::CreateStatic(&ShouldShowProperty, bHaveTemplate));
+
+	DetailView->SetObjects(TArray<UObject*>(InObjects));
+
+	auto wew = InObjects[0];
+
+	NewSlateWindow->SetContent(
+		// SNew(SBorder)
+		SNew(SBorder)
+		// .BorderImage(FEditorStyle::GetBrush(TEXT("PropertyWindow.WindowBorder")))
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot()[
+				DetailView
+			]
+			+ SVerticalBox::Slot()[
+				SNew(SButton).OnClicked_UObject(wew, &UViewingModel::GenerateMoves)
+			]
+		]
+	);
+
+	return NewSlateWindow;
+}
+
 void ADungeonGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
@@ -73,8 +342,9 @@ void ADungeonGameModeBase::BeginPlay()
 		"PropertyEditor");
 
 	ViewingModel = NewObject<UViewingModel>(this);
+	ViewingModel->gm = this;
 	viewingModels.Add(ViewingModel);
-	ModelViewingWindow = PropertyEditorModule.CreateFloatingDetailsView(viewingModels, false);
+	ModelViewingWindow = CreateFloatingDetailsView(viewingModels, false);
 	ModelViewingWindow->ShowWindow();
 
 	TArray<FDungeonLogicUnitRow*> unitsArray;
@@ -155,33 +425,48 @@ void ADungeonGameModeBase::BeginPlay()
 		}
 	}
 
+	const auto TapUpdateViewingModel = [this](auto next)
+	{
+		return [this,next](auto action,
+		                   auto&& model,
+		                   auto&& reducer,
+		                   auto&& loop,
+		                   auto&& deps,
+		                   auto&& tags)
+		{
+			return next(action,
+			            LAGER_FWD(model),
+			            [reducer, this](auto&& m, auto&& a) -> decltype(reducer(LAGER_FWD(m), LAGER_FWD(a)))
+			            {
+				            auto&& [updatedModel, oldEffect] = reducer(LAGER_FWD(m), LAGER_FWD(a));
+				            this->ViewingModel->currentModel = updatedModel;
+				            return {updatedModel, oldEffect};
+			            },
+			            LAGER_FWD(loop),
+			            LAGER_FWD(deps),
+			            LAGER_FWD(tags));
+		};
+	};
+
 	store = MakeUnique<TDungeonStore>(TDungeonStore(lager::make_store<TStoreAction>(
 		FHistoryModel(this->Game),
 		lager::with_manual_event_loop{},
 		WithUndoReducer(WorldStateReducer),
-		WithGlobalEventMiddleware(*this),
-		[this](auto next)
+		TapReducer([&](TDungeonAction action)
 		{
-			return [this,next](auto action,
-			                   auto&& model,
-			                   auto&& reducer,
-			                   auto&& loop,
-			                   auto&& deps,
-			                   auto&& tags)
+			this->DungeonActionDispatched.Broadcast(action);
+			Visit([&]<typename T0>(T0 x)
 			{
-				return next(action,
-				            LAGER_FWD(model),
-				            [reducer, this](auto&& m, auto&& a) -> decltype(reducer(LAGER_FWD(m), LAGER_FWD(a)))
-				            {
-					            auto&& [updatedModel, oldEffect] = reducer(LAGER_FWD(m), LAGER_FWD(a));
-				            	// this->ViewingModel->currentModel = updatedModel;
-					            return { updatedModel, oldEffect };
-				            },
-				            LAGER_FWD(loop),
-				            LAGER_FWD(deps),
-				            LAGER_FWD(tags));
-			};
-		}
+				using TVisitType = typename TDecay<T0>::Type;
+				if constexpr (TIsInTypeUnion<TVisitType, FMoveAction, FCombatAction>::Value )
+				{
+					FString outJson;
+					FJsonObjectConverter::UStructToJsonObjectString<T0>(x, outJson);
+					loggingStrings.Add(outJson);
+				}
+			}, action);
+		}),
+		TapUpdateViewingModel
 	)));
 
 	for (auto UnitIdToActor : static_cast<const FDungeonWorldState>(store->get()).unitIdToActor)

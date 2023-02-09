@@ -11,15 +11,15 @@
 #include "Actions/CombatAction.h"
 #include "Actor/MapCursorPawn.h"
 #include "Blueprint/UserWidget.h"
-#include "Blueprint/WidgetTree.h"
 #include "Curves/CurveVector.h"
 #include "Engine/DataTable.h"
+#include "Engine/StaticMeshActor.h"
 #include "GameFramework/GameModeBase.h"
-#include "Kismet/KismetSystemLibrary.h"
 #include "lager/store.hpp"
 
 #include "DungeonGameModeBase.generated.h"
 
+class ADungeonGameModeBase;
 class UDungeonMainWidget;
 class UTileVisualizationComponent;
 struct FSelectingGameState;
@@ -76,7 +76,11 @@ class UViewingModel : public UObject
 
 public:
 	UPROPERTY(VisibleAnywhere)
-	FHistoryModel currentModel ;
+	FHistoryModel currentModel;
+
+	ADungeonGameModeBase* gm;
+
+	FReply GenerateMoves();
 };
 
 UCLASS()
@@ -95,11 +99,14 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(TDungeonActionDispatched, const TDungeonAction&)
 	TDungeonActionDispatched DungeonActionDispatched;
 
-	TArray<UObject*> viewingModels;
-	
+	TArray<UViewingModel*> viewingModels;
+
 	UPROPERTY()
 	UViewingModel* ViewingModel;
 	TSharedPtr<SWindow> ModelViewingWindow;
+
+	UPROPERTY()
+	TSubclassOf<AStaticMeshActor> BlockingBorderActorClass;
 
 	FText GetCurrentTurnId() const;
 
@@ -119,6 +126,8 @@ public:
 	FCombatActionEvent CombatActionEvent;
 	UPROPERTY()
 	UDungeonMainWidget* MainWidget;
+
+	TArray<FString> loggingStrings;
 
 	UPROPERTY()
 	UTileVisualizationComponent* TileVisualizationComponent;
@@ -167,5 +176,11 @@ public:
 		timeline->Play();
 
 		this->AnimationQueue.Enqueue(MoveTemp(timeline));
+	}
+
+	template <typename T>
+	void Dispatch(T&& x)
+	{
+		this->Dispatch(CreateDungeonAction(Forward<T>(x)));
 	}
 };
