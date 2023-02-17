@@ -6,7 +6,10 @@
 
 const int TILE_POINT_SCALE = 100;
 
-FVector TilePositionToWorldPoint(const FIntPoint& point);
+inline FVector TilePositionToWorldPoint(const FIntPoint& point)
+{
+  return FVector(point) * TILE_POINT_SCALE;
+}
 
 #define CONSTANT_STRING_EXTERNAL(x) const FName G ## x = #x ;
 

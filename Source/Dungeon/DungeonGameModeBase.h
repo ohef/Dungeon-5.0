@@ -16,6 +16,7 @@
 #include "Engine/StaticMeshActor.h"
 #include "GameFramework/GameModeBase.h"
 #include "lager/store.hpp"
+#include "lager/event_loop/queue.hpp"
 
 #include "DungeonGameModeBase.generated.h"
 
@@ -94,7 +95,6 @@ class DUNGEON_API ADungeonGameModeBase : public AGameModeBase,
 public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float time) override;
-	void Dispatch(TDungeonAction&& unionAction);
 
 	DECLARE_MULTICAST_DELEGATE_OneParam(TDungeonActionDispatched, const TDungeonAction&)
 	TDungeonActionDispatched DungeonActionDispatched;
@@ -143,6 +143,7 @@ public:
 	TQueue<TUniquePtr<FTimeline>> AnimationQueue;
 	TUniquePtr<TDungeonStore> store;
 	lager::reader<TInteractionContext> interactionReader;
+	lager::queue_event_loop QueueEventLoop;
 
 	template <typename T>
 	void SubmitLinearAnimation(T* movable, FIntPoint from, FIntPoint to, float time)
@@ -178,9 +179,11 @@ public:
 		this->AnimationQueue.Enqueue(MoveTemp(timeline));
 	}
 
+	lager::future Dispatch(TDungeonAction&& unionAction);
+	
 	template <typename T>
-	void Dispatch(T&& x)
+	decltype(auto) Dispatch(T&& x)
 	{
-		this->Dispatch(CreateDungeonAction(Forward<T>(x)));
+		return this->Dispatch(CreateDungeonAction(Forward<T>(x)));
 	}
 };

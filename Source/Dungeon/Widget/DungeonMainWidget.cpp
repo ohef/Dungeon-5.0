@@ -32,7 +32,7 @@ struct FDungeonWidgetContextHandler
 	{
 	}
 
-	//TODO: This is literally reconciliation 
+	//TODO: This is literally reconciliation from react...hmm
 	template <typename TFrom, typename TTo>
 	void operator()(TFrom l, TTo r)
 	{
@@ -125,7 +125,7 @@ bool UDungeonMainWidget::Initialize()
 
 	ActionChecks.Add(visibilityCheck(Attack, [&]
 	{
-		return GetInteractablePositions(UseViewState()).IsEmpty();
+		return GetInteractablePositionsAtCursorPosition(UseViewState()).IsEmpty();
 	}));
 
 	ActionChecks.Add(visibilityCheck(Move, [&]

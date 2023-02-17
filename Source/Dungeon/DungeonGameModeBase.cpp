@@ -15,10 +15,10 @@
 #include "Engine/StaticMeshActor.h"
 #include "GameFramework/GameStateBase.h"
 #include "Interfaces/IMainFrameModule.h"
-#include "Kismet/KismetSystemLibrary.h"
-#include "lager/event_loop/manual.hpp"
 #include "lager/store.hpp"
 #include "lager/util.hpp"
+#include "lager/event_loop/manual.hpp"
+#include "lager/event_loop/queue.hpp"
 #include "Lenses/model.hpp"
 #include "Logic/SimpleTileGraph.h"
 #include "Serialization/Csv/CsvParser.h"
@@ -33,7 +33,19 @@ template <typename T>
 struct TIsOptional<TOptional<T>>
 {
 	const static bool Value = true;
-	using Type = T;
+};
+
+auto localView = [&](auto model, auto... lenses)
+{
+	constexpr auto numberOfParams = sizeof...(lenses);
+	if constexpr (numberOfParams > 1)
+	{
+		return lager::view(fan(lenses...), model);
+	}
+	else
+	{
+		return lager::view(lenses..., model);
+	}
 };
 
 FReply UViewingModel::GenerateMoves()
@@ -41,12 +53,14 @@ FReply UViewingModel::GenerateMoves()
 	using namespace lager::lenses;
 	using namespace lager;
 
-	const FDungeonWorldState& initialState = currentModel;
+	const FDungeonWorldState& initialState = **gm->store;
 
-	// state.TurnState.teamId = 1;
 	auto aiTeamId = initialState.TurnState.teamId;
-	auto aiUnit = view(getUnitUnderCursor | ignoreOptional, initialState);
-	aiTeamId = aiUnit.teamId;
+	auto optionalAiUnit = view(getUnitUnderCursor, initialState);
+	if (!optionalAiUnit.IsSet())
+		return FReply::Handled();
+	
+	aiTeamId = optionalAiUnit->teamId;
 
 	TMap<int, TSet<int>> TeamIdToUnitIds;
 
@@ -64,19 +78,6 @@ FReply UViewingModel::GenerateMoves()
 		                                          acc.Append(y);
 		                                          return acc;
 	                                          });
-
-	auto localView = [&](auto... lenses)
-	{
-		constexpr auto numberOfParams = sizeof...(lenses);
-		if constexpr (numberOfParams > 1)
-		{
-			return lager::view(fan(lenses...), initialState);
-		}
-		else
-		{
-			return lager::view(lenses..., initialState);
-		}
-	};
 
 	using TClosestDistanceAndUnitId = TTuple<int, int>;
 
@@ -96,7 +97,7 @@ FReply UViewingModel::GenerateMoves()
 			for (int enemyId : enemyIds)
 			{
 				auto currentTuple = TClosestDistanceAndUnitId{
-					manhattanDistance(thisPt - localView(unitIdToPosition(enemyId))), enemyId
+					manhattanDistance(thisPt - localView(initialState, unitIdToPosition(enemyId))), enemyId
 				};
 				minTuple = [](auto&& a, auto&& b) { return TLess<>{}(get<0>(a), get<0>(b)); }(currentTuple, minTuple)
 					           ? currentTuple
@@ -107,92 +108,107 @@ FReply UViewingModel::GenerateMoves()
 		}
 	}
 
-
-	// auto AIUnitId = aiUnit.Id;
-
-	for (int aiUnitId : aiUnitIds)
+	auto accumulator = [this, closestUnitMap](lager::future&& currentFuture, int aiUnitId) -> lager::future
 	{
-		const FDungeonWorldState& state = **gm->store;
-		using TActionsTuple = TTuple<FMoveAction, TOptional<FCombatAction>>;
-		TArray<TActionsTuple> actions;
-
-		auto [aiPosition,aiUnitData] = lager::view(fan(unitIdToPosition(aiUnitId), unitDataLens(aiUnitId)),
-		                                           initialState);
-		auto interactablePoints = manhattanReachablePoints(
-			state.Map.Width - 1,
-			state.Map.Height - 1,
-			aiUnitData->Movement,
-			aiPosition);
-
-		for (FIntPoint movePoint : interactablePoints)
-		{
-			auto possibleUnit = view(getUnitAtPointLens(movePoint), state);
-			if (possibleUnit.IsSet() && *possibleUnit != aiUnitId)
+		return MoveTemp(currentFuture).then(
+			[this, aiUnitId, closestUnitMap]
 			{
-				continue;
-			}
-			auto zaTup = TActionsTuple(FMoveAction(aiUnitId, movePoint), TOptional<FCombatAction>());
-			auto& [moveA,optCombat] = zaTup;
-			const auto& [distance, unitId] = closestUnitMap[movePoint.X][movePoint.Y];
+				using TActionsTuple = TTuple<FMoveAction, TOptional<FCombatAction>>;
+				const FDungeonWorldState& state = **gm->store;
+				TArray<TActionsTuple> actions;
 
-			if (distance <= aiUnitData->attackRange)
-			{
-				optCombat = FCombatAction(aiUnitId, localView(unitDataLens(unitId))->Id, aiUnitData->damage);
-			}
-			actions.Add(zaTup);
-		}
+				auto [aiPosition,aiUnitData] =
+					lager::view(fan(unitIdToPosition(aiUnitId), unitDataLens(aiUnitId)), state);
+					
+				auto interactablePoints = manhattanReachablePoints(
+					state.Map.Width - 1,
+					state.Map.Height - 1,
+					aiUnitData->Movement,
+					aiPosition);
 
-		Algo::Sort(actions, [&](TActionsTuple& a, TActionsTuple& b)
-		{
-			const auto& aPoint = a.Key.Destination;
-			const auto& bPoint = b.Key.Destination;
+				for (FIntPoint movePoint : interactablePoints)
+				{
+					auto possibleUnit = view(getUnitAtPointLens(movePoint), state);
+					if (possibleUnit.IsSet() && *possibleUnit != aiUnitId)
+					{
+						continue;
+					}
+					auto zaTup = TActionsTuple(FMoveAction(aiUnitId, movePoint), TOptional<FCombatAction>());
+					auto& [moveA,optCombat] = zaTup;
+					const auto& [distance, unitId] = closestUnitMap[movePoint.X][movePoint.Y];
 
-			if (TEqualTo()(a.Value.IsSet(), b.Value.IsSet()))
-			{
-				if (TEqualTo()(closestUnitMap[aPoint.X][aPoint.Y].Key, closestUnitMap[bPoint.X][bPoint.Y].Key))
-					return TLess<>()((aiPosition - a.Key.Destination).Size(), (aiPosition - b.Key.Destination).Size());
-				else
-					return TLess<>()(closestUnitMap[aPoint.X][aPoint.Y].Key, closestUnitMap[bPoint.X][bPoint.Y].Key);
-			}
-			else
-			{
-				return !TLess<>{}(a.Value.IsSet(), b.Value.IsSet());
-			}
-		});
+					if (distance <= aiUnitData->attackRange)
+					{
+						optCombat = FCombatAction(aiUnitId, localView(state, unitDataLens(unitId))->Id,
+						                          aiUnitData->damage);
+					}
+					actions.Add(zaTup);
+				}
 
-		auto combatToDisp = TSet<FIntPoint>{};
-		auto moveToDisp = TSet<FIntPoint>{};
+				Algo::Sort(actions, [&](TActionsTuple& a, TActionsTuple& b)
+				{
+					const auto& aPoint = a.Key.Destination;
+					const auto& bPoint = b.Key.Destination;
 
-		for (TActionsTuple Action : actions)
-		{
-			auto& [moveAct, combatAct] = Action;
+					if (TEqualTo()(a.Value.IsSet(), b.Value.IsSet()))
+					{
+						if (TEqualTo()(closestUnitMap[aPoint.X][aPoint.Y].Key, closestUnitMap[bPoint.X][bPoint.Y].Key))
+							return TLess<>()((aiPosition - a.Key.Destination).Size(),
+							                 (aiPosition - b.Key.Destination).Size());
+						else
+							return TLess<>()(closestUnitMap[aPoint.X][aPoint.Y].Key,
+							                 closestUnitMap[bPoint.X][bPoint.Y].Key);
+					}
+					else
+					{
+						return !TLess<>{}(a.Value.IsSet(), b.Value.IsSet());
+					}
+				});
 
-			// if ([](TActionsTuple x) { return x.Value.IsSet(); }(Action))
-			if (combatAct.IsSet())
-			{
-				combatToDisp.Add(moveAct.Destination);
-				// ([](TActionsTuple x) { return x.Key.Destination; }(Action));
-			}
-			else
-			{
-				moveToDisp.Add(moveAct.Destination);
-			}
-		}
+				auto combatToDisp = TSet<FIntPoint>{};
+				auto moveToDisp = TSet<FIntPoint>{};
 
-		// gm->TileVisualizationComponent->Clear();
-		// gm->TileVisualizationComponent->ShowTiles(combatToDisp, FLinearColor::Green);
-		// gm->TileVisualizationComponent->ShowTiles(moveToDisp, FLinearColor::Yellow);
+				for (TActionsTuple Action : actions)
+				{
+					auto& [moveAct, combatAct] = Action;
 
-		[&](TActionsTuple tuple)
-		{
-			gm->Dispatch(MoveTemp(tuple.Key));
+					// if ([](TActionsTuple x) { return x.Value.IsSet(); }(Action))
+					if (combatAct.IsSet())
+					{
+						combatToDisp.Add(moveAct.Destination);
+						// ([](TActionsTuple x) { return x.Key.Destination; }(Action));
+					}
+					else
+					{
+						moveToDisp.Add(moveAct.Destination);
+					}
+				}
 
-			if (tuple.Value.IsSet())
-				gm->Dispatch(MoveTemp(*tuple.Value));
-			else
-				gm->Dispatch(FWaitAction{tuple.Key.InitiatorId});
-		}(MoveTemp(actions[0]));
-	}
+				// gm->TileVisualizationComponent->Clear();
+				// gm->TileVisualizationComponent->ShowTiles(combatToDisp, FLinearColor::Green);
+				// gm->TileVisualizationComponent->ShowTiles(moveToDisp, FLinearColor::Yellow);
+				
+				auto runThis = [this](TActionsTuple&& tuple)
+				{
+					auto moveAction = tuple.Key;
+					TOptional<FCombatAction> possibleCombat = tuple.Value;
+					return gm->Dispatch(MoveTemp(moveAction)).then(
+						[possibleCombat, id = moveAction.InitiatorId, this]() -> lager::future
+						{
+							if (possibleCombat.IsSet())
+							{
+								return gm->Dispatch(FCombatAction(*possibleCombat));
+							}
+
+							return gm->Dispatch(FWaitAction{id});
+						});
+				};
+
+				return runThis(static_cast<TActionsTuple>(actions[0]));
+			});
+	};
+
+	auto everything = Algo::Accumulate(aiUnitIds, lager::future(), accumulator);
 
 	return FReply::Handled();
 }
@@ -237,8 +253,18 @@ auto TapReducer(Fn&& effectFunction)
 					            [ DUNGEON_MOVE_LAMBDA(oldEffect), DUNGEON_MOVE_LAMBDA(a), effectFunction ]
 				            (auto&& ctx)
 					            {
-						            oldEffect(DUNGEON_FOWARD(ctx));
-						            effectFunction(a);
+						            if constexpr (std::is_same_v<void,
+						                                         decltype(oldEffect(ctx))>)
+						            {
+							            oldEffect(DUNGEON_FOWARD(ctx));
+							            effectFunction(a);
+						            }
+					            	else
+					            	{
+						                auto&& daFuture = oldEffect(DUNGEON_FOWARD(ctx));
+							            effectFunction(a);
+					            		return daFuture;
+					            	}
 					            }
 				            };
 			            },
@@ -451,6 +477,7 @@ void ADungeonGameModeBase::BeginPlay()
 	store = MakeUnique<TDungeonStore>(TDungeonStore(lager::make_store<TStoreAction>(
 		FHistoryModel(this->Game),
 		lager::with_manual_event_loop{},
+		// lager::with_queue_event_loop{QueueEventLoop},
 		WithUndoReducer(WorldStateReducer),
 		TapReducer([&](TDungeonAction action)
 		{
@@ -458,15 +485,16 @@ void ADungeonGameModeBase::BeginPlay()
 			Visit([&]<typename T0>(T0 x)
 			{
 				using TVisitType = typename TDecay<T0>::Type;
-				if constexpr (TIsInTypeUnion<TVisitType, FMoveAction, FCombatAction>::Value )
+				if constexpr (TIsInTypeUnion<TVisitType, FMoveAction, FCombatAction>::Value)
 				{
 					FString outJson;
 					FJsonObjectConverter::UStructToJsonObjectString<T0>(x, outJson);
 					loggingStrings.Add(outJson);
 				}
 			}, action);
-		}),
-		TapUpdateViewingModel
+		})
+		//, TapUpdateViewingModel
+		, lager::with_futures
 	)));
 
 	for (auto UnitIdToActor : static_cast<const FDungeonWorldState>(store->get()).unitIdToActor)
@@ -540,7 +568,7 @@ void ADungeonGameModeBase::BeginPlay()
 				SNew(STextBlock)
                      .TextStyle(&style)
                      .Font(InAttribute)
-                     .Text_Lambda([&]()-> auto
+                     .Text_Lambda([&]() -> auto
 				                {
 					                return Visit([&](auto&& context)
 					                {
@@ -560,15 +588,17 @@ void ADungeonGameModeBase::Tick(float deltaTime)
 {
 	Super::Tick(deltaTime);
 
+	// QueueEventLoop.step();
+
 	if (this->AnimationQueue.IsEmpty())
 		return;
 
 	(*this->AnimationQueue.Peek())->TickTimeline(deltaTime);
 }
 
-void ADungeonGameModeBase::Dispatch(TDungeonAction&& unionAction)
+lager::future ADungeonGameModeBase::Dispatch(TDungeonAction&& unionAction)
 {
-	store->dispatch(unionAction);
+	return store->dispatch(MoveTemp(unionAction));
 }
 
 FText ADungeonGameModeBase::GetCurrentTurnId() const

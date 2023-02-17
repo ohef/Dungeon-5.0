@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include <lager/store.hpp>
 #include "Logic/DungeonGameState.h"
+#include "Utility/Macros.hpp"
 
 #include "Dungeon.generated.h"
 
@@ -112,6 +113,13 @@ namespace Dungeon
 				return Visit(TDungeonVisitor{catchAllFunction, values...}, evt);
 			};
 		};
+	};
+
+	//Happens rarely but sometimes our functions are templated and we can work without needing to do something
+	//specific for the type
+	const auto MatchAgnostic = [](auto&& catchAllFunction)
+	{
+		return Match(DUNGEON_FOWARD(catchAllFunction))();
 	};
 
 	const auto MatchEffect = Match(identity);

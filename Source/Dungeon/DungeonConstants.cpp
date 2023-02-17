@@ -3,7 +3,7 @@
 
 #include "DungeonConstants.h"
 
-FVector TilePositionToWorldPoint(const FIntPoint& point)
-{
-  return FVector(point) * TILE_POINT_SCALE;
-}
+// FVector TilePositionToWorldPoint(const FIntPoint& point)
+// {
+//   return FVector(point) * TILE_POINT_SCALE;
+// }

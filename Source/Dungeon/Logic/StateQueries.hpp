@@ -12,7 +12,7 @@ const auto GetUnitIdFromContext = GetUnitMenuContext
 	| map_opt(attr(&FUnitMenu::unitId))
 	| value_or(-1);
 
-const auto GetInteractablePositionss = [](const FDungeonWorldState& Model, TFunctionRef<FIntPoint()> positionGetter)
+inline auto GetInteractablePositions(const FDungeonWorldState& Model, TFunctionRef<FIntPoint()> positionGetter)
 {
 	const auto selector = [&Model](auto&& lens) { return lager::view(lens, Model); };
 
@@ -37,15 +37,15 @@ const auto GetInteractablePositionss = [](const FDungeonWorldState& Model, TFunc
 	});
 
 	return zug::unreal::into(TSet<FIntPoint>(), xf, points);
-};
+}
 
-const auto GetInteractablePositionsUsingTarget = [](const FDungeonWorldState& Model, const FIntPoint& pt)
+inline decltype(auto) GetInteractablePositions(const FDungeonWorldState& Model, const FIntPoint& pt)
 {
-	return GetInteractablePositionss(Model, [&] { return pt; });
+	return GetInteractablePositions(Model, [&] { return pt; });
 };
 
-const auto GetInteractablePositions = [](const FDungeonWorldState& Model)
+inline decltype(auto) GetInteractablePositionsAtCursorPosition(const FDungeonWorldState& Model)
 {
 	const auto selector = [&Model](auto&& lens) { return lager::view(lens, Model); };
-	return GetInteractablePositionss(Model, [&] { return selector(attr(&FDungeonWorldState::CursorPosition)); });
+	return GetInteractablePositions(Model, [&] { return selector(attr(&FDungeonWorldState::CursorPosition)); });
 };

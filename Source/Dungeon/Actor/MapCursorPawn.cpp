@@ -84,7 +84,7 @@ void AMapCursorPawn::BeginPlay()
 						attr(&FDungeonWorldState::WaitingForResolution) | unreal_alternative<FCombatAction> |
 						ignoreOptional).InitiatorId));
 
-			TSet<FIntPoint> IntPoints = GetInteractablePositionsUsingTarget(reader.get(), interactionPosition);
+			TSet<FIntPoint> IntPoints = GetInteractablePositions(reader.get(), interactionPosition);
 			cycler = TCycleArrayIterator(zug::unreal::into(TArray<FIntPoint>{}, zug::identity, IntPoints));
 		}
 	};

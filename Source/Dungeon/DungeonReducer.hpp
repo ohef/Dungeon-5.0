@@ -1,11 +1,17 @@
 ﻿#pragma once
 #include "Dungeon.h"
+#include "DungeonConstants.h"
+#include "DungeonUnitActor.h"
+#include "GraphAStar.h"
+#include "PromiseFulfiller.h"
 #include "Algo/Copy.h"
+#include "Algo/ForEach.h"
 #include "Logic/DungeonGameState.h"
 #include "lager/store.hpp"
 #include "lager/util.hpp"
 #include "lager/lenses/tuple.hpp"
 #include "Lenses/model.hpp"
+#include "Logic/SimpleTileGraph.h"
 #include "Logic/util.h"
 #include "Utility/VariantVisitor.hpp"
 
@@ -69,7 +75,7 @@ struct FBackTransitions
 };
 
 using FDungeonEffect = lager::effect<TDungeonAction>;
-using FDungeonReducerResult = std::pair<FDungeonWorldState, FDungeonEffect>;
+using FDungeonReducerResult = lager::result<FDungeonWorldState,TDungeonAction>;
 
 template <typename T>
 inline void UpdateInteractionContext(FDungeonWorldState& worldState, T& Value)
@@ -135,21 +141,21 @@ struct FCursorPositionUpdatedHandler : public TVariantVisitor<void, TInteraction
 
 inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction) -> FDungeonReducerResult
 {
-	const auto DungeonView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
+	const auto ReducerView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
 	const auto DefaultPassthrough = [&](auto& x) -> FDungeonReducerResult { return {Model, lager::noop}; };
 	const auto Matcher = Dungeon::Match(DefaultPassthrough);
 
 	return Matcher
 	([&](FBackAction&) -> FDungeonReducerResult
 	 {
-		 return Visit(lager::visitor{
-			              [&](auto& all) -> FDungeonReducerResult
-			              {
-				              auto Value = FBackTransitions{}(all);
-				              Model.InteractionContext.Set<decltype(Value)>(Value);
-				              return {Model, lager::noop};
-			              },
-		              }, Model.InteractionContext);
+		 return Dungeon::MatchAgnostic(
+			 [&](auto& all) -> FDungeonReducerResult
+			 {
+				 auto Value = FBackTransitions{}(all);
+				 Model.InteractionContext.Set<decltype(Value)>(Value);
+				 return Model;
+			 }
+		 )(Model.InteractionContext);
 	 },
 	 [&](FSpawnUnit& action) -> FDungeonReducerResult
 	 {
@@ -157,14 +163,14 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 			 unitDataLens(action.unit.Id),
 			 getUnitAtPointLens(action.position));
 		 auto UpdatedModel = lager::set(Lens, Model, std::make_tuple(TOptional(action.unit), TOptional(action.unit.Id)));
-		 return {UpdatedModel, lager::noop};
+		 return UpdatedModel;
 	 },
 	 [&](FTimingInteractionResults& action) -> FDungeonReducerResult
 	 {
 		 return Matcher
 		 ([&](FCombatAction& waitingAction) -> FDungeonReducerResult
 		 {
-			 auto damage = DungeonView(unitDataLens(waitingAction.InitiatorId))->damage
+			 auto damage = ReducerView(unitDataLens(waitingAction.InitiatorId))->damage
 				 - floor((0.05 * action[0].order));
 
 			 waitingAction.damageValue = damage;
@@ -188,7 +194,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 			  return Matcher
 			  ([&](FMoveAction waitingAction) -> FDungeonReducerResult
 			   {
-				   bool bIsUnitThere = DungeonView(getUnitAtPointLens(actionTarget.target)).IsSet();
+				   bool bIsUnitThere = ReducerView(getUnitAtPointLens(actionTarget.target)).IsSet();
 				   auto [movementTiles, attackTiles] = GetInteractionFields(Model, waitingAction.InitiatorId);
 				   if (bIsUnitThere || !movementTiles.Contains(actionTarget.target))
 					   return {Model, lager::noop};
@@ -216,13 +222,13 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 			   [&](FCombatAction& waitingAction) -> FDungeonReducerResult
 			   {
 				   TOptional<FDungeonLogicUnit> initiatingUnit =
-					   DungeonView(
+					   ReducerView(
 						   unitDataLens(waitingAction.InitiatorId));
-				   int targetedUnitId = DungeonView(
+				   int targetedUnitId = ReducerView(
 					   getUnitAtPointLens(actionTarget.target) |
 					   unreal_value_or(-1));
 				   TOptional<FDungeonLogicUnit> targetedUnit =
-					   DungeonView(unitDataLens(targetedUnitId));
+					   ReducerView(unitDataLens(targetedUnitId));
 
 				   auto [movementTiles, attackTiles] =
 					   GetInteractionFields(
@@ -244,9 +250,9 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					   auto val = Model.InteractionsToResolve.Top().
 					                    TryGet<FUnitInteraction>();
 					   val->originatorID = waitingAction.InitiatorId;
-					   auto possibleTarget = DungeonView(
+					   auto possibleTarget = ReducerView(
 						   getUnitAtPointLens(
-							   DungeonView(cursorPositionLens)));
+							   ReducerView(cursorPositionLens)));
 					   val->targetIDUnderFocus = *possibleTarget;
 
 					   return {
@@ -261,7 +267,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					   };
 				   }
 
-				   return DefaultPassthrough(waitingAction);
+				   return Model;
 			   }
 			  )(Model.WaitingForResolution);
 		  },
@@ -272,10 +278,10 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				  return {Model, lager::noop};
 
 			  auto foundUnitId = *foundUnitOpt;
-			  auto isFinished = !DungeonView(isUnitFinishedLens2(foundUnitId)).IsSet();
+			  auto isFinished = !ReducerView(isUnitFinishedLens2(foundUnitId)).IsSet();
 
-			  const auto& TurnState = DungeonView(attr(&FDungeonWorldState::TurnState));
-			  auto DungeonLogicUnit = DungeonView(
+			  const auto& TurnState = ReducerView(attr(&FDungeonWorldState::TurnState));
+			  auto DungeonLogicUnit = ReducerView(
 				  unitDataLens(foundUnitId) | ignoreOptional);
 
 			  auto isOnTeam = TurnState.teamId == DungeonLogicUnit.teamId;
@@ -294,7 +300,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 			  }
 			  else
 			  {
-				  return {Model, lager::noop};
+				  return Model;
 			  }
 		  }
 		 )(Model.InteractionContext);
@@ -320,7 +326,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 	 [&](FChangeState& action) -> FDungeonReducerResult
 	 {
 		 UpdateInteractionContext(Model, action.newState);
-		 return {Model, lager::noop};
+		 return Model;
 	 },
 	 [&](FEndTurnAction& action) -> FDungeonReducerResult
 	 {
@@ -329,23 +335,69 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 
 		 Model.TurnState = {nextTeamId};
 		 Model.InteractionContext.Set<FSelectingUnitContext>(FSelectingUnitContext());
-		 return {Model, lager::noop};
+		 return Model;
 	 },
 	 [&](FCursorPositionUpdated& action) -> FDungeonReducerResult
 	 {
 		 Visit(FCursorPositionUpdatedHandler(Model, action.cursorPosition), Model.InteractionContext);
 		 Model.CursorPosition = action.cursorPosition;
-		 return {Model, lager::noop};
+		 return Model;
 	 },
 	 [&](FMoveAction& MoveAction) -> FDungeonReducerResult
 	 {
-		 FDungeonLogicMap& DungeonLogicMap = Model.Map;
-		 DungeonLogicMap.UnitAssignment.Remove(
-			 *DungeonLogicMap.UnitAssignment.FindKey(MoveAction.InitiatorId));
-		 DungeonLogicMap.UnitAssignment.
-		                 Add(MoveAction.Destination, MoveAction.InitiatorId);
+		 FDungeonLogicMap DungeonLogicMap = Model.Map;
+		 const FDungeonLogicUnit& DungeonLogicUnit  = ReducerView(unitIdToData(MoveAction.InitiatorId));
+		 FIntPoint LastPosition = *DungeonLogicMap.UnitAssignment.FindKey(MoveAction.InitiatorId);
 
-		 return DefaultPassthrough(MoveAction);
+		 int before = DungeonLogicMap.UnitAssignment.Num();
+
+		 DungeonLogicMap.UnitAssignment.Remove(LastPosition);
+		 DungeonLogicMap.UnitAssignment.Add(MoveAction.Destination, MoveAction.InitiatorId);
+	 
+		 auto actor = ReducerView(unitIdToActor(MoveAction.InitiatorId));
+
+		 int after = DungeonLogicMap.UnitAssignment.Num();
+		 
+		 if (before != after)
+			 UE_DEBUG_BREAK();
+
+		 Model.Map = DungeonLogicMap;
+
+		 return {Model,
+		 	[actor, DungeonLogicMap, MoveAction, DungeonLogicUnit, LastPosition]
+		 	(TDungeonStore::context_t context) 
+		 {
+			 if(!actor.IsSet()) //TODO Fuck this runs in unit tests
+				 return lager::future{};
+
+			 auto& moveComp = (*actor)->InterpToMovementComponent;
+			 moveComp->ResetControlPoints();
+	 		
+			 FIntPoint UpdatedPosition = MoveAction.Destination;
+		 
+			 TArray<FIntPoint> aStarResult;
+			 FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph(DungeonLogicMap, DungeonLogicUnit.Movement);
+			 FGraphAStar aStarGraph(SimpleTileGraph);
+			 auto Result = aStarGraph.FindPath(LastPosition, UpdatedPosition, SimpleTileGraph, aStarResult);
+		 
+			 moveComp->ResetControlPoints();
+			 moveComp->Duration = aStarResult.Num() / 3.0f;
+			 moveComp->AddControlPointPosition(TilePositionToWorldPoint(LastPosition), false);
+			 Algo::ForEach(aStarResult, [&](auto x) mutable
+			 {
+				 moveComp->AddControlPointPosition(TilePositionToWorldPoint(x), false);
+			 });
+			 moveComp->FinaliseControlPoints();
+			 moveComp->RestartMovement();
+			 auto PromiseFulfiller = NewObject<UPromiseFulfiller>();
+			 auto [p,f] = lager::promise::with_loop(context.loop());
+			 PromiseFulfiller->daPromise = MoveTemp(p);
+			 moveComp->OnInterpToStop.AddUniqueDynamic(PromiseFulfiller, &UPromiseFulfiller::ResolveDaPromise);
+			 return MoveTemp(f).then([&moveComp, PromiseFulfiller]
+			 {
+			 	moveComp->OnInterpToStop.RemoveDynamic(PromiseFulfiller, &UPromiseFulfiller::ResolveDaPromise);
+			 });
+		 }};
 	 },
 	 [&](FCombatAction& action) -> FDungeonReducerResult
 	 {
@@ -371,7 +423,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 	 [&](FFocusChanged& action) -> FDungeonReducerResult
 	 {
 		 Model.InteractionContext.Get<FUnitMenu>().focusedAbilityName = action.focusName;
-		 return DefaultPassthrough(action);
+		 return Model;
 	 }
 	)(worldAction);
 }

@@ -85,7 +85,9 @@ void ADungeonUnitActor::HookIntoStore()
 
 	UseEvent().AddUObject(this, &ADungeonUnitActor::HandleGlobalEvent);
 
-	static const TMap<int, FLinearColor> teamColorMap = {{0, FLinearColor::Blue}, {1, FLinearColor::Red}};
+	static const TMap<int, FLinearColor> teamColorMap = {
+		{0, FLinearColor::Blue},
+		{1, FLinearColor::Red}};
 
 	lastPosition = lager::view(second, reader.get());
 	reader.bind(TPreviousHookFunctor<decltype(reader)::value_type>(
@@ -160,29 +162,29 @@ struct FDungeonUnitActorHandler
 
 	void operator()(const FMoveAction& event)
 	{
-		if (getThisId(*_this->reader) == event.InitiatorId)
-		{
-			auto ReaderVal = _this->reader.get();
-			FDungeonLogicUnit DungeonLogicUnit = lager::view(first, ReaderVal);
-			FIntPoint UpdatedPosition = lager::view(second, ReaderVal);
-
-			TArray<FIntPoint> aStarResult;
-			FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph(_this->UseViewState(attr(&FDungeonWorldState::Map)),
-			                                                    DungeonLogicUnit.Movement);
-			FGraphAStar aStarGraph(SimpleTileGraph);
-			auto Result = aStarGraph.FindPath(_this->lastPosition, UpdatedPosition, SimpleTileGraph, aStarResult);
-
-			_this->InterpToMovementComponent->ResetControlPoints();
-			_this->InterpToMovementComponent->Duration = aStarResult.Num() / 3.0f;
-			_this->InterpToMovementComponent->AddControlPointPosition(TilePositionToWorldPoint(_this->lastPosition),
-			                                                          false);
-			Algo::ForEach(aStarResult, [&](auto x) mutable
-			{
-				_this->InterpToMovementComponent->AddControlPointPosition(TilePositionToWorldPoint(x), false);
-			});
-			_this->InterpToMovementComponent->FinaliseControlPoints();
-			_this->InterpToMovementComponent->RestartMovement();
-		}
+		// if (getThisId(*_this->reader) == event.InitiatorId)
+		// {
+		// 	auto ReaderVal = _this->reader.get();
+		// 	FDungeonLogicUnit DungeonLogicUnit = lager::view(first, ReaderVal);
+		// 	FIntPoint UpdatedPosition = lager::view(second, ReaderVal);
+		//
+		// 	TArray<FIntPoint> aStarResult;
+		// 	FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph(_this->UseViewState(attr(&FDungeonWorldState::Map)),
+		// 	                                                    DungeonLogicUnit.Movement);
+		// 	FGraphAStar aStarGraph(SimpleTileGraph);
+		// 	auto Result = aStarGraph.FindPath(_this->lastPosition, UpdatedPosition, SimpleTileGraph, aStarResult);
+		//
+		// 	_this->InterpToMovementComponent->ResetControlPoints();
+		// 	_this->InterpToMovementComponent->Duration = aStarResult.Num() / 3.0f;
+		// 	_this->InterpToMovementComponent->AddControlPointPosition(TilePositionToWorldPoint(_this->lastPosition),
+		// 	                                                          false);
+		// 	Algo::ForEach(aStarResult, [&](auto x) mutable
+		// 	{
+		// 		_this->InterpToMovementComponent->AddControlPointPosition(TilePositionToWorldPoint(x), false);
+		// 	});
+		// 	_this->InterpToMovementComponent->FinaliseControlPoints();
+		// 	_this->InterpToMovementComponent->RestartMovement();
+		// }
 	}
 
 	void operator()(const FBackAction& event)

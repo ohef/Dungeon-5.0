@@ -78,15 +78,15 @@ const auto unitIdToPosition = [](int unitId)
 		| lager::lenses::getset(
 			[unitId](unitAssign_t&& map)
 			{
-				try
-				{
+				// try
+				// {
 					return *map.FindKey(unitId);
-				}
-				catch (...)
-				{
-					UE_DEBUG_BREAK();
-					return FIntPoint();
-				}
+				// }
+				// catch (...)
+				// {
+				// 	UE_DEBUG_BREAK();
+				// 	return FIntPoint();
+				// }
 			},
 			[](unitAssign_t&& map, unitAssign_t::KeyType&& positionToSet)
 			{
@@ -96,8 +96,7 @@ const auto unitIdToPosition = [](int unitId)
 
 const auto unitIdToActor = [](int unitId)
 {
-	return SimpleCastTo<FDungeonWorldState>
-		| attr(&FDungeonWorldState::unitIdToActor)
+	return attr(&FDungeonWorldState::unitIdToActor)
 		| Find(unitId);
 };
 

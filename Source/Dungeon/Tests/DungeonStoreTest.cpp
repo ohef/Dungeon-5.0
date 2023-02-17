@@ -311,7 +311,7 @@ bool FDungeonStoreTest::RunTest(const FString& Parameters)
 		modell.Map.LoadedUnits.Add(2, targetedUnit);
 		modell.Map.LoadedUnits.Add(3, FDungeonLogicUnit(3, 2, 13, Free, "67", 8, 1, 1));
 
-		auto result = GetInteractablePositions(modell);
+		auto result = GetInteractablePositionsAtCursorPosition(modell);
 
 		TestTrue("Should be 2", result.Num() == 2);
 
