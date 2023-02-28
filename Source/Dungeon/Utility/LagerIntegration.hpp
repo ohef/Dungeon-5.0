@@ -95,7 +95,6 @@ struct GetDerefValueType<TUniquePtr<T>>
 {
 	typedef T Type ;
 };
-;
 
 constexpr auto deref =
 	zug::comp([](auto&& f)
@@ -124,20 +123,6 @@ const auto getter = [](auto member)
 		};
 	});
 };
-
-template <typename T>
-struct TIsOptionall
-{
-	const static bool Value = false;
-};
-
-template <typename T>
-struct TIsOptionall<TOptional<T>>
-{
-	const static bool Value = true;
-	using Type = T;
-};
-
 
 template <typename Key>
 auto Find(Key key)

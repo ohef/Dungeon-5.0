@@ -9,6 +9,7 @@
 #include "Logic/unit.h"
 #include "Utility/StoreConnectedClass.hpp"
 #include "DungeonGameModeBase.h"
+#include "PromiseFulfiller.h"
 #include "Widget/DamageWidget.h"
 #include "Widget/HealthBarWidget.h"
 #include "Components/WidgetComponent.h"
@@ -73,6 +74,9 @@ public:
 	UMaterialInstanceDynamic* UnitIndicatorDynamic;
 	UPROPERTY(Transient)
 	UMaterialInstance* UnitIndicatorMaterial;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UAnimMontage* CombatActionMontage;
 
 	virtual
 	void Tick(float DeltaTime) override;

@@ -17,6 +17,7 @@ struct FUnitMenu;
 struct FMainMenu;
 
 DECLARE_EVENT_OneParam(AMapCursorPawn, FQueryInput, FIntPoint);
+#define DUNGEON_MOVE_LAMBDA(_x) _x = MoveTemp(_x)
 
 template <typename T, typename... TArgs>
 struct TIsInTypeUnion

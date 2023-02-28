@@ -15,12 +15,16 @@ class DUNGEON_API UPromiseFulfiller : public UObject
 {
 	GENERATED_BODY()
 public:
-	
-	lager::promise daPromise = lager::promise::invalid().first;
+	lager::promise promiseToFulfill = lager::promise::invalid().first;
 
 	UFUNCTION()
-	void ResolveDaPromise(const FHitResult& ImpactResult, float Time)
+	void HandleOnInterpToStop(const FHitResult& x, float y) { promiseToFulfill(); };
+	
+	UFUNCTION()
+	void HandleOnMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 	{
-		daPromise();
-	}
+		promiseToFulfill();
+	};
 };
+
+

@@ -18,7 +18,6 @@
 #include "lager/store.hpp"
 #include "lager/util.hpp"
 #include "lager/event_loop/manual.hpp"
-#include "lager/event_loop/queue.hpp"
 #include "Lenses/model.hpp"
 #include "Logic/SimpleTileGraph.h"
 #include "Serialization/Csv/CsvParser.h"
@@ -108,9 +107,10 @@ FReply UViewingModel::GenerateMoves()
 		}
 	}
 
-	auto accumulator = [this, closestUnitMap](lager::future&& currentFuture, int aiUnitId) -> lager::future
+	auto futureAccumulator = [this, closestUnitMap]
+	(lager::future&& futureChain, int aiUnitId) -> lager::future
 	{
-		return MoveTemp(currentFuture).then(
+		return MoveTemp(futureChain).then(
 			[this, aiUnitId, closestUnitMap]
 			{
 				using TActionsTuple = TTuple<FMoveAction, TOptional<FCombatAction>>;
@@ -208,7 +208,7 @@ FReply UViewingModel::GenerateMoves()
 			});
 	};
 
-	auto everything = Algo::Accumulate(aiUnitIds, lager::future(), accumulator);
+	Algo::Accumulate(aiUnitIds, lager::future(), futureAccumulator);
 
 	return FReply::Handled();
 }
@@ -228,8 +228,6 @@ ADungeonGameModeBase::ADungeonGameModeBase(const FObjectInitializer& ObjectIniti
 	UnitTable = ObjectInitializer.CreateDefaultSubobject<UDataTable>(this, "Default");
 	UnitTable->RowStruct = FDungeonLogicUnit::StaticStruct();
 }
-
-#define DUNGEON_MOVE_LAMBDA(_x) _x = MoveTemp(_x)
 
 template <typename Fn>
 auto TapReducer(Fn&& effectFunction)

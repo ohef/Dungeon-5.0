@@ -6,6 +6,7 @@
 #include <Core/Public/Containers/Array.h>
 
 #include "DungeonConstants.h"
+#include "DungeonUnitActor.h"
 #include "Components/DrawFrustumComponent.h"
 #include "Dungeon/DungeonGameModeBase.h"
 #include "Dungeon/Lenses/model.hpp"
@@ -58,15 +59,6 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
 	previousZoom = storedZoomLevels.GetData()->ZoomLevel;
 }
 
-template <typename T>
-int manhattanDistance(T a, T b, int x)
-{
-	if (x < 0)
-		return 0;
-
-	return b(x) - a(x) + manhattanDistance(b, a, x - 1);
-}
-
 void AMapCursorPawn::BeginPlay()
 {
 	Super::BeginPlay();
@@ -86,6 +78,7 @@ void AMapCursorPawn::BeginPlay()
 
 			TSet<FIntPoint> IntPoints = GetInteractablePositions(reader.get(), interactionPosition);
 			cycler = TCycleArrayIterator(zug::unreal::into(TArray<FIntPoint>{}, zug::identity, IntPoints));
+			currentCyclerIndex = 0;
 		}
 	};
 
@@ -98,11 +91,12 @@ void AMapCursorPawn::BeginPlay()
 		handleChangeState
 	));
 
-	reader = UseState(SimpleCastTo<FDungeonWorldState>).make();
-	reader.bind(zug::comp(Dungeon::Match
-			(
-				[&](const auto& context)
+	auto defaultAttachment = SpringArmComponent->GetAttachParent();
+	auto movementToggler = [&, defaultAttachment](const auto& context)
 				{
+					SpringArmComponent->AttachToComponent(defaultAttachment,
+					                                      FAttachmentTransformRules(
+						                                      EAttachmentRule::KeepRelative, false));
 					using TContext = decltype(context);
 					if constexpr (isInGuiControlledState<TContext>())
 					{
@@ -112,8 +106,19 @@ void AMapCursorPawn::BeginPlay()
 					{
 						MovementComponent->SetActive(true);
 					}
-				}
-			)())
+				};
+
+	reader = UseStoreNode().make();
+	reader.bind(zug::comp(Dungeon::Match
+		(movementToggler)
+			([this](const FUnitInteraction interaction)
+			{
+				auto component =
+					UseViewState(unitIdToActor(interaction.targetIDUnderFocus) | ignoreOptional)
+					->FindComponentByClass<USkeletalMeshComponent>();
+
+				SpringArmComponent->AttachToComponent(component, FAttachmentTransformRules(EAttachmentRule::KeepRelative, false), "head");
+			}))
 		| [](auto&& model) { return model.InteractionContext; });
 }
 
@@ -172,7 +177,6 @@ void AMapCursorPawn::Query()
 	StoreDispatch(TDungeonAction(TInPlaceType<FCursorQueryTarget>{}, CurrentPosition));
 }
 
-
 const auto GetContextLens = interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(
 	attr(&FSelectingUnitAbilityTarget::abilityId));
 
@@ -195,29 +199,29 @@ void AMapCursorPawn::MoveUp(float Value)
 	}
 }
 
-void AMapCursorPawn::Cycle(TOptional<FIntPoint> (TCycleArrayIterator<FIntPoint>::* directionFunction)())
+decltype(auto) preIncrement(auto& v) { return ++v; };
+decltype(auto) preDecrement (auto& v) { return ++v; };
+
+using TNumberMutator = int&(int&);
+
+void AMapCursorPawn::CycleSelect(TNumberMutator* indexMover)
 {
 	auto context = UseViewState(GetContextLens);
 	if (context.has_value() && context.value() == EAbilityId::IdAttack)
 	{
-		TOptional<FIntPoint> maybeIntPoint = cycler.Current();
-		if (maybeIntPoint.IsSet())
-		{
-			RootComponent->SetWorldLocation(TilePositionToWorldPoint(*maybeIntPoint));
-		}
-
-		(cycler.*directionFunction)();
+		auto maybeIntPoint = cycler.iteratee[indexMover(currentCyclerIndex) % cycler.iteratee.Num()];
+		RootComponent->SetWorldLocation(TilePositionToWorldPoint(maybeIntPoint));
 	}
 }
 
 void AMapCursorPawn::Next()
 {
-	Cycle(&TCycleArrayIterator<FIntPoint>::Forward);
+	CycleSelect(&preIncrement);
 }
 
 void AMapCursorPawn::Previous()
 {
-	Cycle(&TCycleArrayIterator<FIntPoint>::Backwards);
+	CycleSelect(&preDecrement);
 }
 
 void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)

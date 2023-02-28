@@ -101,6 +101,7 @@ protected:
   void MoveRight(float Value);
   void MoveUp(float Value);
   void Cycle(TOptional<FIntPoint> (TCycleArrayIterator<FIntPoint>::*directionFunction)());
+  void CycleSelect(int&(*indexMover)(int&));
   void RotateCamera(float Value);
   void Query();
   void Next();
@@ -113,6 +114,7 @@ protected:
   TSet<FIntPoint> interactionPoints;
 
   TCycleArrayIterator<FIntPoint> cycler;
+  int currentCyclerIndex;
   
 public:
   void CycleZoom();

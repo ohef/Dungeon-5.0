@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "Animation/AnimInstance.h"
 #include "Dungeon.h"
 #include "DungeonConstants.h"
 #include "DungeonUnitActor.h"
@@ -75,7 +76,7 @@ struct FBackTransitions
 };
 
 using FDungeonEffect = lager::effect<TDungeonAction>;
-using FDungeonReducerResult = lager::result<FDungeonWorldState,TDungeonAction>;
+using FDungeonReducerResult = lager::result<FDungeonWorldState, TDungeonAction>;
 
 template <typename T>
 inline void UpdateInteractionContext(FDungeonWorldState& worldState, T& Value)
@@ -110,6 +111,31 @@ FDungeonReducerResult AddInChangeStateEffect(auto& Model, auto&& ...values)
 	};
 }
 
+//UHHMMM GROSS DEPARTMENT?
+template <typename TDelegate, bool TReturnTuple = false>
+inline decltype(auto) CreateResolvingFutureOnEventRaise(TDelegate& OnInterpToStopDelegate, const auto& context,
+	typename TDelegate::FDelegate::template TMethodPtrResolver< UPromiseFulfiller >::FMethodPtr FuncPtr,
+	FName InFunctionName )
+{
+	auto PromiseFulfiller = NewObject<UPromiseFulfiller>();
+	auto [p,f] = lager::promise::with_loop(context.loop());
+	PromiseFulfiller->promiseToFulfill = MoveTemp(p);
+	OnInterpToStopDelegate.__Internal_AddUniqueDynamic(PromiseFulfiller, FuncPtr, InFunctionName );
+	auto chainedFuture = MoveTemp(f).then(
+		[&OnInterpToStopDelegate, PromiseFulfiller, FuncPtr, InFunctionName ]
+		{
+			OnInterpToStopDelegate.__Internal_RemoveDynamic(PromiseFulfiller, FuncPtr, InFunctionName);
+		});
+	
+	if constexpr (TReturnTuple)
+		return MakeTuple(PromiseFulfiller, MoveTemp(chainedFuture));
+	else
+		return chainedFuture;
+};
+
+#define CreateFutureFromUnrealDelegate(Delegate, Context, FuncName) CreateResolvingFutureOnEventRaise( Delegate, Context, FuncName, STATIC_FUNCTION_FNAME( TEXT( #FuncName ) ) )
+#define CreatePromiseFromUnrealDelegate(Delegate, Context, FuncName) CreateResolvingFutureOnEventRaise<decltype(Delegate), true>( Delegate, Context, FuncName, STATIC_FUNCTION_FNAME( TEXT( #FuncName ) ) )
+
 struct FCursorPositionUpdatedHandler : public TVariantVisitor<void, TInteractionContext>
 {
 	using TVariantVisitor<void, TInteractionContext>::operator();
@@ -139,6 +165,11 @@ struct FCursorPositionUpdatedHandler : public TVariantVisitor<void, TInteraction
 	}
 };
 
+const auto IsNull = [](auto... ptr)
+{
+	return ( (ptr == nullptr) && ... );
+};
+
 inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction) -> FDungeonReducerResult
 {
 	const auto ReducerView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
@@ -148,14 +179,16 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 	return Matcher
 	([&](FBackAction&) -> FDungeonReducerResult
 	 {
-		 return Dungeon::MatchAgnostic(
-			 [&](auto& all) -> FDungeonReducerResult
-			 {
-				 auto Value = FBackTransitions{}(all);
-				 Model.InteractionContext.Set<decltype(Value)>(Value);
-				 return Model;
-			 }
-		 )(Model.InteractionContext);
+		 // return Dungeon::MatchAgnostic(
+			//  [&](auto& all) -> FDungeonReducerResult
+			//  {
+			// 	 auto Value = FBackTransitions{}(all);
+			// 	 Model.InteractionContext.Set<decltype(Value)>(Value);
+			// 	 return Model;
+			//  }
+		 // )(Model.InteractionContext);
+		
+		return Model;
 	 },
 	 [&](FSpawnUnit& action) -> FDungeonReducerResult
 	 {
@@ -199,8 +232,6 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				   if (bIsUnitThere || !movementTiles.Contains(actionTarget.target))
 					   return {Model, lager::noop};
 
-				   waitingAction.Destination = actionTarget.target;
-				   // Model.InteractionsToResolve.Pop();
 				   return {
 					   Model,
 					   [waitingAction = MoveTemp(waitingAction)](auto ctx)
@@ -273,7 +304,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 		  },
 		  [&](FSelectingUnitContext&) -> FDungeonReducerResult
 		  {
-			  auto foundUnitOpt = Dungeon::Selectors::GetUnitIdUnderCursor(Model);  
+			  auto foundUnitOpt = Dungeon::Selectors::GetUnitIdUnderCursor(Model);
 			  if (!foundUnitOpt.IsSet())
 				  return {Model, lager::noop};
 
@@ -346,63 +377,94 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 	 [&](FMoveAction& MoveAction) -> FDungeonReducerResult
 	 {
 		 FDungeonLogicMap DungeonLogicMap = Model.Map;
-		 const FDungeonLogicUnit& DungeonLogicUnit  = ReducerView(unitIdToData(MoveAction.InitiatorId));
+		 const FDungeonLogicUnit& DungeonLogicUnit = ReducerView(unitIdToData(MoveAction.InitiatorId));
 		 FIntPoint LastPosition = *DungeonLogicMap.UnitAssignment.FindKey(MoveAction.InitiatorId);
 
 		 int before = DungeonLogicMap.UnitAssignment.Num();
 
 		 DungeonLogicMap.UnitAssignment.Remove(LastPosition);
 		 DungeonLogicMap.UnitAssignment.Add(MoveAction.Destination, MoveAction.InitiatorId);
-	 
-		 auto actor = ReducerView(unitIdToActor(MoveAction.InitiatorId));
 
 		 int after = DungeonLogicMap.UnitAssignment.Num();
-		 
+
 		 if (before != after)
 			 UE_DEBUG_BREAK();
 
 		 Model.Map = DungeonLogicMap;
 
-		 return {Model,
-		 	[actor, DungeonLogicMap, MoveAction, DungeonLogicUnit, LastPosition]
-		 	(TDungeonStore::context_t context) 
-		 {
-			 if(!actor.IsSet()) //TODO Fuck this runs in unit tests
-				 return lager::future{};
+		 auto actor = ReducerView(unitIdToActor(MoveAction.InitiatorId));
 
-			 auto& moveComp = (*actor)->InterpToMovementComponent;
-			 moveComp->ResetControlPoints();
-	 		
-			 FIntPoint UpdatedPosition = MoveAction.Destination;
-		 
-			 TArray<FIntPoint> aStarResult;
-			 FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph(DungeonLogicMap, DungeonLogicUnit.Movement);
-			 FGraphAStar aStarGraph(SimpleTileGraph);
-			 auto Result = aStarGraph.FindPath(LastPosition, UpdatedPosition, SimpleTileGraph, aStarResult);
-		 
-			 moveComp->ResetControlPoints();
-			 moveComp->Duration = aStarResult.Num() / 3.0f;
-			 moveComp->AddControlPointPosition(TilePositionToWorldPoint(LastPosition), false);
-			 Algo::ForEach(aStarResult, [&](auto x) mutable
+		 return {
+			 Model,
+			 [actor, DungeonLogicMap, MoveAction, DungeonLogicUnit, LastPosition]
+		 (TDungeonStore::context_t context)
 			 {
-				 moveComp->AddControlPointPosition(TilePositionToWorldPoint(x), false);
-			 });
-			 moveComp->FinaliseControlPoints();
-			 moveComp->RestartMovement();
-			 auto PromiseFulfiller = NewObject<UPromiseFulfiller>();
-			 auto [p,f] = lager::promise::with_loop(context.loop());
-			 PromiseFulfiller->daPromise = MoveTemp(p);
-			 moveComp->OnInterpToStop.AddUniqueDynamic(PromiseFulfiller, &UPromiseFulfiller::ResolveDaPromise);
-			 return MoveTemp(f).then([&moveComp, PromiseFulfiller]
-			 {
-			 	moveComp->OnInterpToStop.RemoveDynamic(PromiseFulfiller, &UPromiseFulfiller::ResolveDaPromise);
-			 });
-		 }};
+				 if (!actor.IsSet()) //TODO Fuck this runs in unit tests
+					 return lager::future{};
+
+				 auto actorPtr = *actor;
+				 auto moveComp = actorPtr->InterpToMovementComponent;
+				 moveComp->ResetControlPoints();
+
+				 FIntPoint UpdatedPosition = MoveAction.Destination;
+
+				 TArray<FIntPoint> aStarResult;
+				 FSimpleTileGraph SimpleTileGraph = FSimpleTileGraph(DungeonLogicMap, DungeonLogicUnit.Movement);
+				 FGraphAStar aStarGraph(SimpleTileGraph);
+				 auto Result = aStarGraph.FindPath(LastPosition, UpdatedPosition, SimpleTileGraph, aStarResult);
+
+				 moveComp->ResetControlPoints();
+				 moveComp->Duration = aStarResult.Num() / 3.0f;
+				 moveComp->AddControlPointPosition(TilePositionToWorldPoint(LastPosition), false);
+				 Algo::ForEach(aStarResult, [&](auto x) mutable
+				 {
+					 moveComp->AddControlPointPosition(TilePositionToWorldPoint(x), false);
+				 });
+				 moveComp->FinaliseControlPoints();
+				 moveComp->RestartMovement();
+
+				 //LMAO - Yeah you can do this
+				 auto springArm = actorPtr
+					->GetWorld()
+					->GetFirstPlayerController()
+					->GetPawn()
+					->FindComponentByClass<USpringArmComponent>();
+
+				 auto oldParent = springArm->GetAttachParent();
+				 springArm->AttachToComponent(actorPtr->GetRootComponent(),
+				                              FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
+
+				 return CreateFutureFromUnrealDelegate(moveComp->OnInterpToStop, context,
+				                                       &UPromiseFulfiller::HandleOnInterpToStop)
+					 .then([springArm, actorPtr, oldParent]
+					 {
+						 springArm->AttachToComponent(
+							 oldParent, FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
+					 });
+			 }
+		 };
 	 },
 	 [&](FCombatAction& action) -> FDungeonReducerResult
 	 {
-		 FDungeonLogicUnit& foundUnit = Model.Map.LoadedUnits.FindChecked(action.InitiatorId);
-		 Model.TurnState.unitsFinished.Add(foundUnit.Id);
+		 FDungeonLogicUnit& initiatorUnit = Model.Map.LoadedUnits.FindChecked(action.InitiatorId);
+
+		 auto actorMap = ReducerView(attr(&FDungeonWorldState::unitIdToActor));
+		 auto initatorActor = actorMap.FindAndRemoveChecked(initiatorUnit.Id);
+		 actorMap.Remove(action.targetedUnit);
+	 	
+		 using TComp = USkeletalMeshComponent;
+		 TArray<TComp*> comps;
+		 for (TTuple<int, TWeakObjectPtr<ADungeonUnitActor>> tuple : actorMap)
+		 {
+			 tuple.Value->GetComponents(comps);
+			 for (auto c : comps)
+			 {
+				 c->SetVisibleFlag(false);
+				 c->MarkRenderStateDirty();
+			 }
+		 }
+
+		 Model.TurnState.unitsFinished.Add(initiatorUnit.Id);
 
 		 Model = lager::over(unitIdToData(action.targetedUnit), Model, [&](FDungeonLogicUnit Unit)
 		 {
@@ -410,13 +472,42 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 			 Unit.HitPoints -= action.damageValue;
 			 return Unit;
 		 });
-	 	
+
 		 Model.InteractionContext.Set<FSelectingUnitContext>({});
-	 	
+
 		 return {
-			 Model, [](auto& ctx)
+			 Model, [initatorActor, DUNGEON_MOVE_LAMBDA(actorMap)](auto& ctx) -> lager::future
 			 {
-				 ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
+				 auto FindComponentByClass = initatorActor
+					 ->FindComponentByClass<USkeletalMeshComponent>();
+				 UAnimInstance* AnimInstance = FindComponentByClass
+					 ->GetAnimInstance();
+
+				 if (IsNull(AnimInstance, initatorActor->CombatActionMontage))
+					 return {};
+
+				 AnimInstance->Montage_Play(initatorActor->CombatActionMontage);
+
+				 TTuple<UPromiseFulfiller*, lager::future> tuple = CreatePromiseFromUnrealDelegate(AnimInstance->OnMontageEnded, ctx, &UPromiseFulfiller::HandleOnMontageEnded);
+
+				 return CreateFutureFromUnrealDelegate(AnimInstance->OnMontageEnded, ctx,
+				                                       &UPromiseFulfiller::HandleOnMontageEnded)
+					 .then([&ctx, DUNGEON_MOVE_LAMBDA(actorMap)]
+					 {
+						 using TComp = USkeletalMeshComponent;
+						 TArray<TComp*> comps;
+						 for (TTuple<int, TWeakObjectPtr<ADungeonUnitActor>> tuple : actorMap)
+						 {
+							 tuple.Value->GetComponents(comps);
+							 for (auto c : comps)
+							 {
+								 c->SetVisibleFlag(true);
+								 c->MarkRenderStateDirty();
+							 }
+						 }
+					 	
+						 ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
+					 });
 			 }
 		 };
 	 },
@@ -428,7 +519,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 	)(worldAction);
 }
 
-template <typename ...TArgs>
+template <typename... TArgs>
 bool IsInTypeSet(const auto& variant)
 {
 	return (variant.template IsType<TArgs>() || ...);

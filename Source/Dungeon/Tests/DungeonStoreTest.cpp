@@ -140,17 +140,6 @@ void GenerateMoves(FDungeonWorldState& state)
 	}
 }
 
-void Stuff(TSet<int> input, const TFunction<TArray<TDungeonAction>(int)>& wew)
-{
-	TArray<TDungeonAction> actions;
-	for (int Input : input)
-	{
-		auto copy = input;
-		copy.Remove(Input);
-		Stuff(copy, wew);
-	}
-}
-
 TArray<TTuple<int, int, int>> ChooseNextUnitToActOn(FDungeonWorldState& state)
 {
 	using namespace lager::lenses;
@@ -343,6 +332,25 @@ bool FDungeonStoreTest::RunTest(const FString& Parameters)
 		GenerateMoves(modell);
 		// auto distancePrioritizedUnits = ChooseNextUnitToActOn(modell);
 		// auto DistancePrioritizedUnit = distancePrioritizedUnits.Pop();
+	}
+	
+	{
+		FDungeonWorldState modell;
+		modell.CursorPosition = {1, 2};
+		modell.Map.Width = 10;
+		modell.Map.Height = 10;
+		modell.Map.UnitAssignment.Add({1, 2}, 1);
+		modell.Map.UnitAssignment.Add({0, 2}, 2);
+		modell.Map.UnitAssignment.Add({8, 8}, 3);
+
+		auto attackingUnit = FDungeonLogicUnit(1, 2, 13, Free, "67", 8, 2, 1);
+		auto targetedUnit = FDungeonLogicUnit(2, 2, 13, Free, "67", 8, 1, 1);
+
+		// WithUndoReducer(WorldStateReducer);
+
+		modell.Map.LoadedUnits.Add(1, attackingUnit);
+		modell.Map.LoadedUnits.Add(2, targetedUnit);
+		modell.Map.LoadedUnits.Add(3, FDungeonLogicUnit(3, 2, 13, Free, "67", 8, 1, 1));
 	}
 
 	return true;

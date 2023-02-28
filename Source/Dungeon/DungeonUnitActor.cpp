@@ -89,13 +89,13 @@ void ADungeonUnitActor::HookIntoStore()
 		{0, FLinearColor::Blue},
 		{1, FLinearColor::Red}};
 
-	lastPosition = lager::view(second, reader.get());
+	// lastPosition = lager::view(second, reader.get());
 	reader.bind(TPreviousHookFunctor<decltype(reader)::value_type>(
 		reader.get(),
 		[this](auto&& previousReaderVal, auto&& ReaderVal)
 		{
 			auto [DungeonLogicUnit, UpdatedPosition , isFinished] = ReaderVal;
-			lastPosition = lager::view(second,previousReaderVal) ;
+			// lastPosition = lager::view(second,previousReaderVal) ;
 			DungeonLogicUnit.state = isFinished.IsSet()
 				                         ? UnitState::ActionTaken
 				                         : UnitState::Free;
@@ -134,7 +134,7 @@ struct FDungeonUnitActorHandler
 	{
 		Visit(*this, event.newState);
 	}
-
+	
 	void operator()(const FCombatAction& event)
 	{
 		auto thisId = getThisId(*_this->reader);
@@ -162,6 +162,7 @@ struct FDungeonUnitActorHandler
 
 	void operator()(const FMoveAction& event)
 	{
+		//TODO: ok...where should these events be handled...
 		// if (getThisId(*_this->reader) == event.InitiatorId)
 		// {
 		// 	auto ReaderVal = _this->reader.get();
@@ -190,6 +191,8 @@ struct FDungeonUnitActorHandler
 	void operator()(const FBackAction& event)
 	{
 		_this->SetActorLocation(TilePositionToWorldPoint(_this->reader.zoom(second).make().get()));
+		_this->InterpToMovementComponent->ResetControlPoints();
+		_this->InterpToMovementComponent->StopMovementImmediately();
 	}
 
 	void operator()(const FUnitInteraction& newState)
