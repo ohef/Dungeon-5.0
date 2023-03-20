@@ -111,7 +111,7 @@ namespace Dungeon
 		{
 			return [catchAllFunction,values...](auto&& evt)
 			{
-				return Visit(TDungeonVisitor{catchAllFunction, values...}, evt);
+				return Visit(TDungeonVisitor{catchAllFunction, values...}, DUNGEON_FOWARD(evt));
 			};
 		};
 	};

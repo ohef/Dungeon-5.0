@@ -69,7 +69,7 @@ void SDungeonEditor::Construct(const FArguments& Args)
 	editorStore = MakeUnique<TDungeonEditorStore>(lager::make_store<TStoreAction>(
 		FDungeonWorldState{.Map = {.Width = 10, .Height = 10}},
 		lager::with_manual_event_loop{},
-		lager::with_reducer(WorldStateReducer)
+		lager::with_reducer([](auto&& m, auto&& a) { return WorldStateReducer(DUNGEON_FOWARD(m),DUNGEON_FOWARD(a), [] {}); })
 	));
 
 	// IAssetTools& AssetTools = FModuleManager::GetModuleChecked<FAssetToolsModule>("AssetTools").Get();

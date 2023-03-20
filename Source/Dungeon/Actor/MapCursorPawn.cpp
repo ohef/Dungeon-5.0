@@ -63,7 +63,7 @@ void AMapCursorPawn::BeginPlay()
 {
 	Super::BeginPlay();
 
-	auto handleChangeState = [&](const FChangeState& = {})
+	auto handleInteractionContextUpdated = [&](const FChangeState& = {})
 	{
 		auto maybeTargeting = UseViewState(
 			interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(
@@ -82,21 +82,51 @@ void AMapCursorPawn::BeginPlay()
 		}
 	};
 
-	UseEvent().AddLambda(Dungeon::MatchEffect(
-		[&, handleChangeState](const FBackAction&)
+	auto MoveToHeadOnPositionUpdate = [this](const FCursorPositionUpdated& newPos)
+	{
+		auto possibleUnit = UseViewState(getUnitAtPointLens(newPos.cursorPosition));
+		if (possibleUnit)
 		{
-			handleChangeState();
+			auto cursorPosition = UseViewState(unitIdToActor(*possibleUnit) | ignoreOptional)
+			                      ->FindComponentByClass<USkeletalMeshComponent>()
+			                      ->GetSocketTransform("head", RTS_Actor);
+			SpringArmComponent->SetRelativeLocation(cursorPosition.GetLocation() * FVector::UpVector);
+		}
+		else
+		{
+			SpringArmComponent->SetRelativeLocation(FVector::Zero());
+		}
+	};
+	
+	UseEvent().AddLambda(Dungeon::MatchEffect(
+		[&, handleInteractionContextUpdated](const FBackAction&)
+		{
+			handleInteractionContextUpdated();
 			RootComponent->SetWorldLocation(TilePositionToWorldPoint(UseViewState(cursorPositionLens)));
 		},
-		handleChangeState
+		// MoveToHeadOnPositionUpdate,
+		handleInteractionContextUpdated
 	));
 
-	auto defaultAttachment = SpringArmComponent->GetAttachParent();
-	auto movementToggler = [&, defaultAttachment](const auto& context)
+	auto catchAllInteractionContext = [&](const auto& context) mutable 
 				{
-					SpringArmComponent->AttachToComponent(defaultAttachment,
-					                                      FAttachmentTransformRules(
-						                                      EAttachmentRule::KeepRelative, false));
+					auto actorMap = UseViewState(attr(&FDungeonWorldState::unitIdToActor));
+					using TComp = USkeletalMeshComponent;
+					TArray<TComp*> comps;
+					for (TTuple<int, TWeakObjectPtr<ADungeonUnitActor>> tuple : actorMap)
+					{
+						tuple.Value->GetComponents(comps);
+						for (auto c : comps)
+						{
+							c->SetVisibleFlag(true);
+							c->MarkRenderStateDirty();
+						}
+					}
+		
+					auto CurrentRotation = SpringArmComponent->GetRelativeRotation().Euler();
+					CurrentRotation[1] = -45;
+					SpringArmComponent->SetRelativeRotation(FRotator::MakeFromEuler(CurrentRotation));
+		
 					using TContext = decltype(context);
 					if constexpr (isInGuiControlledState<TContext>())
 					{
@@ -109,17 +139,63 @@ void AMapCursorPawn::BeginPlay()
 				};
 
 	reader = UseStoreNode().make();
-	reader.bind(zug::comp(Dungeon::Match
-		(movementToggler)
-			([this](const FUnitInteraction interaction)
-			{
-				auto component =
-					UseViewState(unitIdToActor(interaction.targetIDUnderFocus) | ignoreOptional)
-					->FindComponentByClass<USkeletalMeshComponent>();
+	reader.bind(zug::comp(Dungeon::Match(MoveTemp(catchAllInteractionContext))
+			(
+				[this](const FUnitInteraction& interaction) mutable
+				{
+					auto actorMap = UseViewState(attr(&FDungeonWorldState::unitIdToActor));
+					actorMap.Remove(interaction.originatorID);
+					actorMap.Remove(interaction.targetIDUnderFocus);
 
-				SpringArmComponent->AttachToComponent(component, FAttachmentTransformRules(EAttachmentRule::KeepRelative, false), "head");
-			}))
-		| [](auto&& model) { return model.InteractionContext; });
+					using TComp = USkeletalMeshComponent;
+					TArray<TComp*> comps;
+					for (TTuple<int, TWeakObjectPtr<ADungeonUnitActor>> tuple : actorMap)
+					{
+						tuple.Value->GetComponents(comps);
+						for (auto c : comps)
+						{
+							c->SetVisibleFlag(false);
+							c->MarkRenderStateDirty();
+						}
+					}
+					
+					MovementComponent->SetActive(false);
+					auto SkeletalMeshComponentTarget =
+						UseViewState(unitIdToActor(interaction.targetIDUnderFocus) | ignoreOptional)
+						->FindComponentByClass<USkeletalMeshComponent>();
+					auto SkeletalMeshComponentInitiator =
+						UseViewState(unitIdToActor(interaction.originatorID) | ignoreOptional)
+						->FindComponentByClass<USkeletalMeshComponent>();
+
+					auto headPositionTarget = SkeletalMeshComponentTarget
+					->GetSocketTransform("head", RTS_World)
+					.GetLocation();
+					auto headPositionInitiator = SkeletalMeshComponentInitiator->GetSocketTransform("head", RTS_World).
+						GetLocation();
+
+					//TODO: Revisit this math...
+					SpringArmComponent->SetWorldLocation(
+						FVector(1,1,0) * ((headPositionTarget + headPositionInitiator) / 2.0)
+						+ FVector(0,0,1) * SpringArmComponent->GetComponentLocation() );
+					UE::Math::TVector<double> headDirection = headPositionTarget - headPositionInitiator;
+					auto pointingOutwards = FVector::DownVector.Cross(headDirection);
+					auto project = (headPositionInitiator - Camera->GetComponentLocation()).ProjectOnTo(
+						pointingOutwards);
+					FRotator rotator;
+					if (project.Dot(pointingOutwards) >= 0)
+					{
+						rotator = UKismetMathLibrary::MakeRotationFromAxes(pointingOutwards, headDirection,
+						                                                   FVector::UpVector);
+					}
+					else
+					{
+						rotator = UKismetMathLibrary::MakeRotationFromAxes(-pointingOutwards, -headDirection,
+						                                                   FVector::UpVector);
+					}
+
+					SpringArmComponent->SetRelativeRotation(rotator);
+				}))
+		| [](auto&& model) { return DUNGEON_FOWARD(model).InteractionContext; });
 }
 
 void AMapCursorPawn::Tick(float DeltaTime)

@@ -224,6 +224,7 @@ void ADungeonUnitActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	//TODO: Look to see if we can do this using the component itself 
 	if (InterpToMovementComponent->Velocity.Length() > 0)
 	{
 		PathRotation->SetWorldRotation(InterpToMovementComponent->Velocity.ToOrientationRotator());

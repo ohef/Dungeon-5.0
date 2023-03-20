@@ -4,6 +4,7 @@
 #include "Actor/DungeonPlayerController.h"
 
 #include "DungeonConstants.h"
+#include "DungeonUnitActor.h"
 #include "Dungeon/DungeonGameModeBase.h"
 #include "Lenses/model.hpp"
 
@@ -19,13 +20,19 @@ void ADungeonPlayerController::BeginPlay()
   interactionReader.watch([this](const TOptional<FUnitInteraction>& UnitInteraction)
   {
     if(UnitInteraction.IsSet()){
+      auto headFocus =
+      UseViewState(unitIdToActor(UnitInteraction->targetIDUnderFocus) | ignoreOptional)
+      ->FindComponentByClass<USkeletalMeshComponent>()
+      ->GetSocketLocation("head");
+      
       FIntPoint Point = UseViewState(unitIdToPosition(UnitInteraction->targetIDUnderFocus));
+      
       GetWorld()
         ->GetAuthGameMode<ADungeonGameModeBase>()
         ->SingleSubmitHandler
         ->Begin(TDelegate<void(TOptional<FInteractionResults>)>::CreateUObject(
                   this, &ADungeonPlayerController::BeginInteraction),
-                TilePositionToWorldPoint(Point));
+                headFocus );
     }
     else
     {

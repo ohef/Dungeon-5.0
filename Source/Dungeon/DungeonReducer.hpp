@@ -170,7 +170,9 @@ const auto IsNull = [](auto... ptr)
 	return ( (ptr == nullptr) && ... );
 };
 
-inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction) -> FDungeonReducerResult
+const auto identity = []{};
+
+inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction, TFunctionRef<void()>&& signalCheckpoint = identity) -> FDungeonReducerResult
 {
 	const auto ReducerView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
 	const auto DefaultPassthrough = [&](auto& x) -> FDungeonReducerResult { return {Model, lager::noop}; };
@@ -179,14 +181,14 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 	return Matcher
 	([&](FBackAction&) -> FDungeonReducerResult
 	 {
-		 // return Dungeon::MatchAgnostic(
-			//  [&](auto& all) -> FDungeonReducerResult
-			//  {
-			// 	 auto Value = FBackTransitions{}(all);
-			// 	 Model.InteractionContext.Set<decltype(Value)>(Value);
-			// 	 return Model;
-			//  }
-		 // )(Model.InteractionContext);
+		 return Dungeon::MatchAgnostic(
+			 [&](auto& all) -> FDungeonReducerResult
+			 {
+				 auto Value = FBackTransitions{}(all);
+				 Model.InteractionContext.Set<decltype(Value)>(Value);
+				 return Model;
+			 }
+		 )(Model.InteractionContext);
 		
 		return Model;
 	 },
@@ -232,9 +234,12 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				   if (bIsUnitThere || !movementTiles.Contains(actionTarget.target))
 					   return {Model, lager::noop};
 
+				   signalCheckpoint();
+				   waitingAction.Destination = actionTarget.target;
+			  	
 				   return {
 					   Model,
-					   [waitingAction = MoveTemp(waitingAction)](auto ctx)
+					   [DUNGEON_MOVE_LAMBDA(waitingAction = MoveTemp(waitingAction)), signalCheckpoint](auto ctx)
 					   {
 						   ctx.dispatch(
 							   TDungeonAction(
@@ -274,6 +279,8 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				   if (isInRange && isUnitThere &&
 					   isTargetNotOnTheSameTeam)
 				   {
+					   signalCheckpoint();
+					   
 					   waitingAction.targetedUnit = targetedUnit->Id;
 				   	
 					   Model.InteractionsToResolve.Pop();
@@ -318,6 +325,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 			  auto isOnTeam = TurnState.teamId == DungeonLogicUnit.teamId;
 			  if (isFinished && isOnTeam)
 			  {
+				  signalCheckpoint();
 				  return {
 					  Model, [foundUnitId](auto& ctx)
 					  {
@@ -340,6 +348,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 	 {
 		 Model.InteractionsToResolve = action.interactions;
 		 Model.WaitingForResolution = action.mainAction;
+		 signalCheckpoint();
 		 return AddInChangeStateEffect(Model, action.interactions.Top());
 	 },
 	 [&](FWaitAction& action) -> FDungeonReducerResult
@@ -540,21 +549,15 @@ const auto WithUndoReducer = [](auto&& reducer)
 			            LAGER_FWD(model),
 			            [reducer](auto historyModel, auto a) -> std::pair<FHistoryModel, FDungeonEffect>
 			            {
-				            auto&& [childModel, eff] = reducer(historyModel.CurrentState(), a);
+				            auto&& [childModel, eff] = reducer(historyModel.CurrentState(), a, [&]
+				            {
+					            historyModel.AddRecord(historyModel.CurrentState());
+				            });
 
 				            //TODO: Same kinda issue hard coding against the undo action is eh
 				            if (IsInTypeSet<FBackAction>(a) && historyModel.CanGoBack())
 				            {
 					            return {historyModel.GoBack(), lager::noop};
-				            }
-
-				            //TODO: this exists because we want to activate undo on certain actions...probably should be in
-				            //it's own store
-				            if (IsInTypeSet<FChangeState>(a))
-				            {
-					            historyModel.AddRecord(historyModel.CurrentState());
-					            historyModel.CurrentState() = childModel;
-					            return {historyModel, eff};
 				            }
 
 				            historyModel.CurrentState() = childModel;
@@ -564,6 +567,7 @@ const auto WithUndoReducer = [](auto&& reducer)
 				            {
 					            historyModel.Commit();
 				            }
+			            	
 				            return {historyModel, eff};
 			            },
 			            LAGER_FWD(loop),
