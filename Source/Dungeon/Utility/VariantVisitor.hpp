@@ -6,7 +6,6 @@ class TVariantVisitor;
 template <typename TRet,typename... T>
 class TVariantVisitor<TRet,TVariant<T...>> : public TVariantVisitor<TRet, T...>
 {
-  // using TVariantVisitor<TRet, T...>::operator();
 };
 
 template <typename TRet, typename TArg>

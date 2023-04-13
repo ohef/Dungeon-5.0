@@ -11,16 +11,24 @@
 #include "Dungeon/DungeonGameModeBase.h"
 #include "Dungeon/Lenses/model.hpp"
 #include "GameFramework/SpringArmComponent.h"
-#include "lager/lenses/tuple.hpp"
 #include "Logic/StateQueries.hpp"
 #include "zug/transducer/cycle.hpp"
+
+decltype(auto) preIncrement(auto& v) { return ++v; };
+decltype(auto) preDecrement (auto& v) { return --v; };
+
+using TNumberMutator = int&(int&);
+
+int CycleArrayIndex(TNumberMutator* indexMover, int numberOfElements, int currentPointingIndex)
+{
+	auto newIndex = indexMover(currentPointingIndex);
+	return newIndex < 0 ? numberOfElements - 1 : newIndex % numberOfElements;
+}
 
 AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	// RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("ZaRoot"));
-	// CursorCollider->SetupAttachment(RootComponent);
 	CursorCollider = CreateDefaultSubobject<UCapsuleComponent>(TEXT("BoxCollider"));
 	RootComponent = CursorCollider;
 
@@ -45,18 +53,8 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
 	InterpToMovementComponent->Duration = 1;
 	InterpToMovementComponent->BehaviourType = EInterpToBehaviourType::OneShot;
 
-	storedZoomLevels.Push(ZoomLevelNode{500});
-	storedZoomLevels.Push(ZoomLevelNode{1000});
-	storedZoomLevels.Push(ZoomLevelNode{1500});
-
-	for (int i = 0; i < storedZoomLevels.Num() - 1; i++)
-	{
-		storedZoomLevels[i].NextNode = storedZoomLevels.GetData() + i + 1;
-	}
-	storedZoomLevels[storedZoomLevels.Num() - 1].NextNode = storedZoomLevels.GetData();
-
-	currentZoom = storedZoomLevels.GetData();
-	previousZoom = storedZoomLevels.GetData()->ZoomLevel;
+	zoomLevelsInCentimeters = {100, 500, 1000, 1500};
+	currentZoomPointer = 2;
 }
 
 void AMapCursorPawn::BeginPlay()
@@ -66,8 +64,9 @@ void AMapCursorPawn::BeginPlay()
 	auto handleInteractionContextUpdated = [&](const FChangeState& = {})
 	{
 		auto maybeTargeting = UseViewState(
-			interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(
-				attr(&FSelectingUnitAbilityTarget::abilityId)));
+			interactionContextLens
+			| unreal_alternative_pipeline<FSelectingUnitAbilityTarget>
+			| map_opt(attr(&FSelectingUnitAbilityTarget::abilityId)));
 		if (maybeTargeting.has_value() && *maybeTargeting == EAbilityId::IdAttack)
 		{
 			auto interactionPosition =
@@ -102,13 +101,15 @@ void AMapCursorPawn::BeginPlay()
 		[&, handleInteractionContextUpdated](const FBackAction&)
 		{
 			handleInteractionContextUpdated();
-			RootComponent->SetWorldLocation(TilePositionToWorldPoint(UseViewState(cursorPositionLens)));
+			if(CurrentPosition != UseViewState(cursorPositionLens))
+				RootComponent->SetWorldLocation(TilePositionToWorldPoint(UseViewState(cursorPositionLens)));
 		},
 		// MoveToHeadOnPositionUpdate,
 		handleInteractionContextUpdated
 	));
 
-	auto catchAllInteractionContext = [&](const auto& context) mutable 
+	auto beginningLocation = SpringArmComponent->GetRelativeLocation();
+	auto catchAllInteractionContext = [&, beginningLocation](const auto& context) mutable 
 				{
 					auto actorMap = UseViewState(attr(&FDungeonWorldState::unitIdToActor));
 					using TComp = USkeletalMeshComponent;
@@ -126,9 +127,10 @@ void AMapCursorPawn::BeginPlay()
 					auto CurrentRotation = SpringArmComponent->GetRelativeRotation().Euler();
 					CurrentRotation[1] = -45;
 					SpringArmComponent->SetRelativeRotation(FRotator::MakeFromEuler(CurrentRotation));
+					SpringArmComponent->SetRelativeLocation(beginningLocation);
 		
 					using TContext = decltype(context);
-					if constexpr (isInGuiControlledState<TContext>())
+					if constexpr (isInGuiControlledState<TContext>() || TIsInTypeUnion<TContext, FControlledInteraction>::Value)
 					{
 						MovementComponent->SetActive(false);
 					}
@@ -175,25 +177,27 @@ void AMapCursorPawn::BeginPlay()
 
 					//TODO: Revisit this math...
 					SpringArmComponent->SetWorldLocation(
-						FVector(1,1,0) * ((headPositionTarget + headPositionInitiator) / 2.0)
-						+ FVector(0,0,1) * SpringArmComponent->GetComponentLocation() );
-					UE::Math::TVector<double> headDirection = headPositionTarget - headPositionInitiator;
-					auto pointingOutwards = FVector::DownVector.Cross(headDirection);
-					auto project = (headPositionInitiator - Camera->GetComponentLocation()).ProjectOnTo(
-						pointingOutwards);
+						FVector(1, 1, 0) * ((headPositionTarget + headPositionInitiator) / 2.0)
+						+ FVector(0, 0, 1) * SpringArmComponent->GetComponentLocation());
+					FVector headDirection = ( headPositionTarget - headPositionInitiator ) * FVector(1,1,0);
+					auto initiatorFacingDirection = FVector::DownVector.Cross(headDirection);
+					auto project = (headPositionInitiator - Camera->GetComponentLocation() * FVector(1,1,0))
+						.ProjectOnTo(initiatorFacingDirection);
 					FRotator rotator;
-					if (project.Dot(pointingOutwards) >= 0)
+					if (project.Dot(initiatorFacingDirection) >= 0)
 					{
-						rotator = UKismetMathLibrary::MakeRotationFromAxes(pointingOutwards, headDirection,
+						rotator = UKismetMathLibrary::MakeRotationFromAxes(initiatorFacingDirection, headDirection,
 						                                                   FVector::UpVector);
 					}
 					else
 					{
-						rotator = UKismetMathLibrary::MakeRotationFromAxes(-pointingOutwards, -headDirection,
+						rotator = UKismetMathLibrary::MakeRotationFromAxes(-initiatorFacingDirection, -headDirection,
 						                                                   FVector::UpVector);
 					}
-
-					SpringArmComponent->SetRelativeRotation(rotator);
+					
+					SpringArmComponent->SetWorldRotation(FRotator::MakeFromEuler(
+						FVector(0, 0, 1) * rotator.Euler()
+						+ FVector(1, 1, 0) * SpringArmComponent->GetRelativeRotation().Euler()));
 				}))
 		| [](auto&& model) { return DUNGEON_FOWARD(model).InteractionContext; });
 }
@@ -202,8 +206,9 @@ void AMapCursorPawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	auto currentZoomLevel = zoomLevelsInCentimeters[currentZoomPointer];
 	SpringArmComponent->TargetArmLength = previousZoom =
-		FMath::FInterpTo(previousZoom, currentZoom->ZoomLevel, DeltaTime, 50.0);
+		FMath::FInterpTo(previousZoom, currentZoomLevel, DeltaTime, 50.0);
 
 	FVector currentLocation = this->GetActorLocation();
 
@@ -244,8 +249,8 @@ void AMapCursorPawn::RotateCamera(float Value)
 
 void AMapCursorPawn::CycleZoom()
 {
-	previousZoom = currentZoom->ZoomLevel;
-	currentZoom = currentZoom->NextNode;
+	previousZoom = zoomLevelsInCentimeters[currentZoomPointer];
+	currentZoomPointer = CycleArrayIndex(&preIncrement, zoomLevelsInCentimeters.Num(), currentZoomPointer);
 }
 
 void AMapCursorPawn::Query()
@@ -275,17 +280,13 @@ void AMapCursorPawn::MoveUp(float Value)
 	}
 }
 
-decltype(auto) preIncrement(auto& v) { return ++v; };
-decltype(auto) preDecrement (auto& v) { return ++v; };
-
-using TNumberMutator = int&(int&);
-
 void AMapCursorPawn::CycleSelect(TNumberMutator* indexMover)
 {
 	auto context = UseViewState(GetContextLens);
 	if (context.has_value() && context.value() == EAbilityId::IdAttack)
 	{
-		auto maybeIntPoint = cycler.iteratee[indexMover(currentCyclerIndex) % cycler.iteratee.Num()];
+		currentCyclerIndex = CycleArrayIndex(indexMover, cycler.iteratee.Num(), currentCyclerIndex);
+		auto maybeIntPoint = cycler.iteratee[currentCyclerIndex];
 		RootComponent->SetWorldLocation(TilePositionToWorldPoint(maybeIntPoint));
 	}
 }

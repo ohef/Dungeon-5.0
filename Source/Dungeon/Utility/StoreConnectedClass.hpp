@@ -9,6 +9,15 @@ template<typename TThis, class TVariantAction>
 struct FStoreConnectedClass
 {
   virtual ~FStoreConnectedClass(){};
+
+  template<typename T>
+  void StoreDispatch(T&& action)
+  {
+    static_cast<TThis*>(this)
+      ->GetWorld()
+      ->template GetAuthGameMode<ADungeonGameModeBase>()
+      ->Dispatch(Forward<T>(action));
+  }
   
   void StoreDispatch(TVariantAction&& action)
   {

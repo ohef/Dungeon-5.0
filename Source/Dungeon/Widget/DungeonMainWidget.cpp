@@ -182,9 +182,8 @@ void UDungeonMainWidget::OnAttackClicked()
 
 void UDungeonMainWidget::OnWaitClicked()
 {
-	StoreDispatch(TDungeonAction(TInPlaceType<FWaitAction>{},
-	                             UseViewState(GetUnitIdFromContext)
-	));
+	StoreDispatch(FWaitAction{UseViewState(GetUnitIdFromContext)});
+	StoreDispatch(FChangeState{TInteractionContext(TInPlaceType<FSelectingUnitContext>())});
 }
 
 void UDungeonMainWidget::OnEndTurnClicked()

@@ -2,6 +2,7 @@
 
 #include "DungeonGameModeBase.h"
 
+#include "ADungeonWorld.h"
 #include "DungeonReducer.hpp"
 #include "Logic/DungeonGameState.h"
 #include "SingleSubmitHandler.h"
@@ -14,7 +15,6 @@
 #include "Engine/DataTable.h"
 #include "Engine/StaticMeshActor.h"
 #include "GameFramework/GameStateBase.h"
-#include "Interfaces/IMainFrameModule.h"
 #include "lager/store.hpp"
 #include "lager/util.hpp"
 #include "lager/event_loop/manual.hpp"
@@ -47,19 +47,13 @@ auto localView = [&](auto model, auto... lenses)
 	}
 };
 
-FReply UViewingModel::GenerateMoves()
+inline FReply GenerateMoves(ADungeonGameModeBase* gm)
 {
 	using namespace lager::lenses;
 	using namespace lager;
 
 	const FDungeonWorldState& initialState = **gm->store;
-
 	auto aiTeamId = initialState.TurnState.teamId;
-	auto optionalAiUnit = view(getUnitUnderCursor, initialState);
-	if (!optionalAiUnit.IsSet())
-		return FReply::Handled();
-	
-	aiTeamId = optionalAiUnit->teamId;
 
 	TMap<int, TSet<int>> TeamIdToUnitIds;
 
@@ -107,11 +101,11 @@ FReply UViewingModel::GenerateMoves()
 		}
 	}
 
-	auto futureAccumulator = [this, closestUnitMap]
+	auto futureAccumulator = [gm, closestUnitMap]
 	(lager::future&& futureChain, int aiUnitId) -> lager::future
 	{
 		return MoveTemp(futureChain).then(
-			[this, aiUnitId, closestUnitMap]
+			[aiUnitId, closestUnitMap, gm]
 			{
 				using TActionsTuple = TTuple<FMoveAction, TOptional<FCombatAction>>;
 				const FDungeonWorldState& state = **gm->store;
@@ -188,12 +182,12 @@ FReply UViewingModel::GenerateMoves()
 				// gm->TileVisualizationComponent->ShowTiles(combatToDisp, FLinearColor::Green);
 				// gm->TileVisualizationComponent->ShowTiles(moveToDisp, FLinearColor::Yellow);
 				
-				auto runThis = [this](TActionsTuple&& tuple)
+				auto runThis = [gm](TActionsTuple&& tuple)
 				{
 					auto moveAction = tuple.Key;
 					TOptional<FCombatAction> possibleCombat = tuple.Value;
 					return gm->Dispatch(MoveTemp(moveAction)).then(
-						[possibleCombat, id = moveAction.InitiatorId, this]() -> lager::future
+						[possibleCombat, id = moveAction.InitiatorId, gm]() -> lager::future
 						{
 							if (possibleCombat.IsSet())
 							{
@@ -208,8 +202,11 @@ FReply UViewingModel::GenerateMoves()
 			});
 	};
 
-	Algo::Accumulate(aiUnitIds, lager::future(), futureAccumulator);
-
+	Algo::Accumulate(aiUnitIds, lager::future(), futureAccumulator).then([gm]
+	{
+		gm->Dispatch(FEndTurnAction{});
+	});
+	
 	return FReply::Handled();
 }
 
@@ -273,103 +270,12 @@ auto TapReducer(Fn&& effectFunction)
 	};
 }
 
-static bool ShouldShowProperty(const FPropertyAndParent& PropertyAndParent, bool bHaveTemplate)
-{
-	const FProperty& Property = PropertyAndParent.Property;
-
-	if (bHaveTemplate)
-	{
-		const UClass* PropertyOwnerClass = Property.GetOwner<const UClass>();
-		const bool bDisableEditOnTemplate = PropertyOwnerClass
-			&& PropertyOwnerClass->IsNative()
-			&& Property.HasAnyPropertyFlags(CPF_DisableEditOnTemplate);
-		if (bDisableEditOnTemplate)
-		{
-			return false;
-		}
-	}
-	return true;
-}
-
-TSharedRef<SWindow> CreateFloatingDetailsView(const TArray<UViewingModel*>& InObjects,
-                                              bool bIsLockable)
-{
-	TSharedRef<SWindow> NewSlateWindow = SNew(SWindow)
-		.Title(NSLOCTEXT("PropertyEditor", "WindowTitle", "Property Editor"))
-		.ClientSize(FVector2D(400, 550));
-
-	// If the main frame exists parent the window to it
-	TSharedPtr<SWindow> ParentWindow;
-	if (FModuleManager::Get().IsModuleLoaded("MainFrame"))
-	{
-		IMainFrameModule& MainFrame = FModuleManager::GetModuleChecked<IMainFrameModule>("MainFrame");
-		ParentWindow = MainFrame.GetParentWindow();
-	}
-
-	if (ParentWindow.IsValid())
-	{
-		// Parent the window to the main frame 
-		FSlateApplication::Get().AddWindowAsNativeChild(NewSlateWindow, ParentWindow.ToSharedRef());
-	}
-	else
-	{
-		FSlateApplication::Get().AddWindow(NewSlateWindow);
-	}
-
-	FDetailsViewArgs Args;
-	Args.bHideSelectionTip = true;
-	Args.bLockable = bIsLockable;
-
-	FPropertyEditorModule& PropertyEditorModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>(
-		"PropertyEditor");
-	TSharedRef<IDetailsView> DetailView = PropertyEditorModule.CreateDetailView(Args);
-
-	bool bHaveTemplate = false;
-	for (int32 i = 0; i < InObjects.Num(); i++)
-	{
-		if (InObjects[i] != NULL && InObjects[i]->IsTemplate())
-		{
-			bHaveTemplate = true;
-			break;
-		}
-	}
-
-	DetailView->SetIsPropertyVisibleDelegate(FIsPropertyVisible::CreateStatic(&ShouldShowProperty, bHaveTemplate));
-
-	DetailView->SetObjects(TArray<UObject*>(InObjects));
-
-	auto wew = InObjects[0];
-
-	NewSlateWindow->SetContent(
-		// SNew(SBorder)
-		SNew(SBorder)
-		// .BorderImage(FEditorStyle::GetBrush(TEXT("PropertyWindow.WindowBorder")))
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot()[
-				DetailView
-			]
-			+ SVerticalBox::Slot()[
-				SNew(SButton).OnClicked_UObject(wew, &UViewingModel::GenerateMoves)
-			]
-		]
-	);
-
-	return NewSlateWindow;
-}
-
 void ADungeonGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	FPropertyEditorModule& PropertyEditorModule = FModuleManager::Get().GetModuleChecked<FPropertyEditorModule>(
-		"PropertyEditor");
-
-	ViewingModel = NewObject<UViewingModel>(this);
-	ViewingModel->gm = this;
-	viewingModels.Add(ViewingModel);
-	ModelViewingWindow = CreateFloatingDetailsView(viewingModels, false);
-	ModelViewingWindow->ShowWindow();
+	FPropertyEditorModule& PropertyEditorModule = FModuleManager::Get()
+	.GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
 
 	TArray<FDungeonLogicUnitRow*> unitsArray;
 	UnitTable->GetAllRows(TEXT(""), unitsArray);
@@ -387,7 +293,7 @@ void ADungeonGameModeBase::BeginPlay()
 	FDungeonLogicMap testa;
 	FJsonObjectConverter::JsonObjectStringToUStruct(readJsonFile, &testa);
 
-	auto hey =
+	auto testMap =
 		FDungeonLogicMap{
 			.Width = 10, .Height = 10,
 			.TileAssignment = {
@@ -397,57 +303,61 @@ void ADungeonGameModeBase::BeginPlay()
 		};
 
 	FString output;
-	FJsonObjectConverter::UStructToJsonObjectString(hey, output);
-
-	FJsonObjectConverter::JsonObjectStringToUStruct(output, &hey);
+	FJsonObjectConverter::UStructToJsonObjectString(testMap, output);
+	FJsonObjectConverter::JsonObjectStringToUStruct(output, &testMap);
 
 	FFileHelper::SaveStringToFile(output, ToCStr(Filename));
 
+	Game.Config = {.ControllerTypeMapping = {Player, Computer}};
+	Game.InteractionContext.Set<FSelectingUnitContext>(FSelectingUnitContext{});
+
 	FString StuffR;
 	FString TheStr = FPaths::Combine(FPaths::ProjectDir(), TEXT("theBoard.csv"));
-	if (FFileHelper::LoadFileToString(StuffR, ToCStr(TheStr)))
-	{
-		const FCsvParser Parser(MoveTemp(StuffR));
-		const auto& Rows = Parser.GetRows();
-		int32 height = Rows.Num();
-
-		Game.Map.LoadedTiles.Add(1, {1, "Grass", 1});
-
-		for (int i = 0; i < height; i++)
-		{
-			int32 width = Rows[i].Num();
-			Game.Map.Height = height;
-			Game.Map.Width = width;
-			Game.TurnState.teamId = 1;
-			for (int j = 0; j < width; j++)
-			{
-				int dataIndex = i * width + j;
-				auto value = FCString::Atoi(Rows[i][j]);
-
-				Game.Map.TileAssignment.Add({i, j}, 1);
-
-				if (loadedUnitTypes.Contains(value))
-				{
-					auto zaRow = loadedUnitTypes[value];
-					auto zaunit = zaRow.unitData;
-					zaunit.Id = dataIndex;
-					zaunit.Name = FString::FormatAsNumber(dataIndex);
-					Game.Map.LoadedUnits.Add(zaunit.Id, zaunit);
-
-					FIntPoint positionPlacement{i, j};
-					Game.Map.UnitAssignment.Add(positionPlacement, dataIndex);
-
-					UClass* UnrealActor = zaRow.UnrealActor.Get();
-					FTransform Transform = FTransform{FRotator::ZeroRotator, FVector::ZeroVector};
-					auto unitActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnrealActor, Transform);
-					unitActor->id = zaunit.Id;
-
-					Game.unitIdToActor.Add(zaunit.Id, unitActor);
-					unitActor->SetActorLocation(TilePositionToWorldPoint(positionPlacement));
-				}
-			}
-		}
-	}
+	// if (FFileHelper::LoadFileToString(StuffR, ToCStr(TheStr)))
+	// {
+	// 	const FCsvParser Parser(MoveTemp(StuffR));
+	// 	const auto& Rows = Parser.GetRows();
+	// 	int32 height = Rows.Num();
+	//
+	// 	Game.Map.LoadedTiles.Add(1, {1, "Grass", 1});
+	//
+	// 	for (int i = 0; i < height; i++)
+	// 	{
+	// 		int32 width = Rows[i].Num();
+	// 		Game.Map.Height = height;
+	// 		Game.Map.Width = width;
+	// 		Game.TurnState.teamId = 1;
+	// 		for (int j = 0; j < width; j++)
+	// 		{
+	// 			int dataIndex = i * width + j;
+	// 			auto value = FCString::Atoi(Rows[i][j]);
+	//
+	// 			Game.Map.TileAssignment.Add({i, j}, 1);
+	//
+	// 			if (loadedUnitTypes.Contains(value))
+	// 			{
+	// 				auto zaRow = loadedUnitTypes[value];
+	// 				auto zaunit = zaRow.unitData;
+	// 				zaunit.Id = dataIndex;
+	// 				zaunit.Name = FString::FormatAsNumber(dataIndex);
+	// 				Game.Map.LoadedUnits.Add(zaunit.Id, zaunit);
+	//
+	// 				FIntPoint positionPlacement{i, j};
+	// 				Game.Map.UnitAssignment.Add(positionPlacement, dataIndex);
+	//
+	// 				auto unitActor = GetWorld()
+	// 					->SpawnActorDeferred<ADungeonUnitActor>(
+	// 						zaRow.UnrealActor.Get(),
+	// 						FTransform{FRotator::ZeroRotator, FVector::ZeroVector});
+	// 				
+	// 				unitActor->Id = zaunit.Id;
+	// 				Game.unitIdToActor.Add(zaunit.Id, unitActor);
+	// 				
+	// 				unitActor->FinishSpawning(FTransform(TilePositionToWorldPoint(positionPlacement)));
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	const auto TapUpdateViewingModel = [this](auto next)
 	{
@@ -472,41 +382,60 @@ void ADungeonGameModeBase::BeginPlay()
 		};
 	};
 
-	store = MakeUnique<TDungeonStore>(TDungeonStore(lager::make_store<TStoreAction>(
-		FHistoryModel(this->Game),
-		lager::with_manual_event_loop{},
+	TSubclassOf<ADungeonWorld> SubclassOf = ADungeonWorld::StaticClass();
+	auto world = FindAllActorsOfType(GetWorld(), SubclassOf);
+	world->currentWorldState.TurnState.teamId = 1;
+	world->currentWorldState.Config = {.ControllerTypeMapping = {Player, Computer}};
+	world->currentWorldState.InteractionContext.Set<FSelectingUnitContext>({});
+	
+	store = MakeUnique<FDungeonStore>(FDungeonStore(lager::make_store<TStoreAction>(
+		// FHistoryModel(Game)
+		FHistoryModel(world->currentWorldState)
+		,lager::with_manual_event_loop{}
+		,lager::with_deps(std::ref(*GetWorld()))
 		// lager::with_queue_event_loop{QueueEventLoop},
-		WithUndoReducer(WorldStateReducer),
-		TapReducer([&](TDungeonAction action)
+		,WithUndoReducer(WorldStateReducer)
+		,TapReducer([&](TDungeonAction action)
 		{
 			this->DungeonActionDispatched.Broadcast(action);
-			Visit([&]<typename T0>(T0 x)
-			{
-				using TVisitType = typename TDecay<T0>::Type;
-				if constexpr (TIsInTypeUnion<TVisitType, FMoveAction, FCombatAction>::Value)
-				{
-					FString outJson;
-					FJsonObjectConverter::UStructToJsonObjectString<T0>(x, outJson);
-					loggingStrings.Add(outJson);
-				}
-			}, action);
+			// Visit([&]<typename T0>(T0 x)
+			// {
+			// 	using TVisitType = typename TDecay<T0>::Type;
+			// 	if constexpr (TIsInTypeUnion<TVisitType, FMoveAction, FCombatAction>::Value)
+			// 	{
+			// 		FString outJson;
+			// 		FJsonObjectConverter::UStructToJsonObjectString<T0>(x, outJson);
+			// 		loggingStrings.Add(outJson);
+			// 	}
+			// }, action);
 		})
-		//, TapUpdateViewingModel
-		, lager::with_futures
+		// ,TapUpdateViewingModel
+		,lager::with_futures
 	)));
 
 	for (auto UnitIdToActor : static_cast<const FDungeonWorldState>(store->get()).unitIdToActor)
 	{
+		auto testDUDE = UnitIdToActor.Key;
 		UnitIdToActor.Value->HookIntoStore();
 	}
+
+	interactionReader = store->zoom(interactionContextLens)
+	.map([](const TInteractionContext& Context)
+	{
+		return Context.GetIndex();
+	}).make();
+	interactionReader.watch([this](SIZE_T typeIndex)
+	{
+		if (TInteractionContext(TInPlaceType<FControlledInteraction>{}).GetIndex() == typeIndex)
+		{
+			GenerateMoves(this);
+		}
+	});
 
 	FActorSpawnParameters params;
 	params.Name = FName("BoardVisualizationActor");
 	auto tileShowPrefab = GetWorld()->SpawnActor<ATileVisualizationActor>(TileShowPrefab, FVector::ZeroVector,
 	                                                                      FRotator::ZeroRotator, params);
-
-	MovementVisualization = tileShowPrefab->MovementVisualizationComponent;
-	TileVisualizationComponent = tileShowPrefab->TileVisualizationComponent;
 
 	MainWidget = CreateWidget<UDungeonMainWidget>(this->GetWorld()->GetFirstPlayerController(), MainWidgetClass);
 	MainWidget->AddToViewport();
@@ -587,11 +516,6 @@ void ADungeonGameModeBase::Tick(float deltaTime)
 	Super::Tick(deltaTime);
 
 	// QueueEventLoop.step();
-
-	if (this->AnimationQueue.IsEmpty())
-		return;
-
-	(*this->AnimationQueue.Peek())->TickTimeline(deltaTime);
 }
 
 lager::future ADungeonGameModeBase::Dispatch(TDungeonAction&& unionAction)

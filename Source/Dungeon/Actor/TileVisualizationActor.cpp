@@ -31,6 +31,10 @@ void ATileVisualizationActor::BeginPlay()
 
 	contextCursor = UseState(interactionContextLens).make();
 	contextCursor.bind(Dungeon::MatchEffect(
+			[this](const FControlledInteraction&)
+			{
+				TileVisualizationComponent->Clear();
+			},
 			[&](const FSelectingUnitAbilityTarget& context)
 			{
 				const auto& model = this->UseViewState();

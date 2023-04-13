@@ -80,8 +80,6 @@ public:
 	FHistoryModel currentModel;
 
 	ADungeonGameModeBase* gm;
-
-	FReply GenerateMoves();
 };
 
 UCLASS()
@@ -95,6 +93,7 @@ class DUNGEON_API ADungeonGameModeBase : public AGameModeBase,
 public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float time) override;
+	FText GetCurrentTurnId() const;
 
 	DECLARE_MULTICAST_DELEGATE_OneParam(TDungeonActionDispatched, const TDungeonAction&)
 	TDungeonActionDispatched DungeonActionDispatched;
@@ -107,8 +106,6 @@ public:
 
 	UPROPERTY()
 	TSubclassOf<AStaticMeshActor> BlockingBorderActorClass;
-
-	FText GetCurrentTurnId() const;
 
 	UPROPERTY(EditAnywhere)
 	TSubclassOf<UUserWidget> MenuClass;
@@ -129,55 +126,14 @@ public:
 
 	TArray<FString> loggingStrings;
 
-	UPROPERTY()
-	UTileVisualizationComponent* TileVisualizationComponent;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	UTileVisualizationComponent* MovementVisualization;
-
 	UPROPERTY(VisibleAnywhere)
 	USingleSubmitHandler* SingleSubmitHandler;
-
-	TUniquePtr<FDungeonLogicUnit> LastSeenUnitUnderCursor;
+	
 	FTextBlockStyle style;
 	TSubclassOf<UDungeonMainWidget> MainWidgetClass;
-	TQueue<TUniquePtr<FTimeline>> AnimationQueue;
-	TUniquePtr<TDungeonStore> store;
-	lager::reader<TInteractionContext> interactionReader;
+	TUniquePtr<FDungeonStore> store;
+	lager::reader<SIZE_T> interactionReader;
 	lager::queue_event_loop QueueEventLoop;
-
-	template <typename T>
-	void SubmitLinearAnimation(T* movable, FIntPoint from, FIntPoint to, float time)
-	{
-		auto timeline = MakeUnique<FTimeline>();
-		FOnTimelineVectorStatic onUpdate;
-		FOnTimelineEventStatic onFinish;
-		UCurveVector* curve = NewObject<UCurveVector>();
-		from = from * 100;
-		to = to * 100;
-		curve->FloatCurves[0].AddKey(0.0, from.X);
-		curve->FloatCurves[0].AddKey(time, to.X);
-		curve->FloatCurves[1].AddKey(0.0, from.Y);
-		curve->FloatCurves[1].AddKey(time, to.Y);
-
-		onUpdate.BindLambda([movable](FVector interp)
-		{
-			if constexpr (TIsDerivedFrom<T, AActor>::Value)
-				movable->SetActorLocation(interp, false);
-			else
-				movable->SetWorldLocation(interp, false);
-		});
-
-		onFinish.BindLambda([this]()
-		{
-			this->AnimationQueue.Pop();
-		});
-
-		timeline->SetTimelineFinishedFunc(onFinish);
-		timeline->AddInterpVector(curve, onUpdate);
-		timeline->Play();
-
-		this->AnimationQueue.Enqueue(MoveTemp(timeline));
-	}
 
 	lager::future Dispatch(TDungeonAction&& unionAction);
 	

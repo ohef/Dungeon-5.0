@@ -22,7 +22,7 @@ DECLARE_EVENT_OneParam(AMapCursorPawn, FQueryInput, FIntPoint);
 template <typename T, typename... TArgs>
 struct TIsInTypeUnion
 {
-	enum { Value = TOr<TIsSame<T, TArgs>...>::Value };
+	enum { Value = TOr<TIsSame<typename TDecay<T>::Type, TArgs>...>::Value };
 };
 
 template <typename T>
@@ -97,7 +97,9 @@ struct FHistoryModel
 	}
 };
 
-using TDungeonStore = lager::store<TStoreAction, FHistoryModel>;
+using FDungeonStore = lager::store<TStoreAction, FHistoryModel, lager::deps<UWorld&>>;
+using FDungeonEffect = lager::effect<TDungeonAction, FDungeonStore::deps_t>;
+using FDungeonReducerResult = lager::result<FDungeonWorldState, TDungeonAction, FDungeonStore::deps_t>;
 
 namespace Dungeon
 {

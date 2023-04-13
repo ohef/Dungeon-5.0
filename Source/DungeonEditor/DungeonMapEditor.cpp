@@ -12,7 +12,7 @@
 #include "lager/event_loop/manual.hpp"
 #include "Styling/UMGCoreStyle.h"
 #include "Widgets/Layout/SGridPanel.h"
-#include "SDataTableListViewRow.h"
+// #include "SDataTableListViewRow.h"
 
 void SDungeonEditor::NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent,
                                       FEditPropertyChain* PropertyThatChanged)
@@ -22,36 +22,35 @@ void SDungeonEditor::NotifyPostChange(const FPropertyChangedEvent& PropertyChang
 
 DECLARE_DELEGATE_TwoParams(FTileDragEnter, const FGeometry&, const FDragDropEvent&)
 
-class SDungeonEditorTile : public SCompoundWidget
-{
-	SLATE_BEGIN_ARGS(SDungeonEditorTile)
-		{
-		}
-
-		SLATE_EVENT(FTileDragEnter, TileDragEnter)
-	SLATE_END_ARGS()
-
-	void Construct(const FArguments& Args)
-	{
-		this->ChildSlot[SNew(SButton)];
-	}
-
-	virtual FReply OnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent) override
-	{
-		return FReply::Unhandled();
-	}
-};
-
+// class SDungeonEditorTile : public SCompoundWidget
+// {
+// 	SLATE_BEGIN_ARGS(SDungeonEditorTile)
+// 		{
+// 		}
+//
+// 		SLATE_EVENT(FTileDragEnter, TileDragEnter)
+// 	SLATE_END_ARGS()
+//
+// 	void Construct(const FArguments& Args)
+// 	{
+// 		this->ChildSlot[SNew(SButton)];
+// 	}
+//
+// 	virtual FReply OnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent) override
+// 	{
+// 		return FReply::Unhandled();
+// 	}
+// };
 
 FReply SDungeonEditor::OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
 {
-	TSharedPtr<FDataTableRowDragDropOp> DataTableRowDragDropOp = DragDropEvent.GetOperationAs<
-		FDataTableRowDragDropOp>();
-	auto JSONPayload = DataTableRowDragDropOp->Row.Pin()->GetRowDataPtr()->CellData[0]; // The actual payload
-	FDungeonLogicUnit Unit;
-	FJsonObjectConverter::JsonObjectStringToUStruct(JSONPayload.ToString(), &Unit, 0, 0);
-	*UnitOnScope->Get() = Unit;
-
+	// TSharedPtr<FDataTableRowDragDropOp> DataTableRowDragDropOp = DragDropEvent.GetOperationAs<
+	// 	FDataTableRowDragDropOp>();
+	// auto JSONPayload = DataTableRowDragDropOp->Row.Pin()->GetRowDataPtr()->CellData[0]; // The actual payload
+	// FDungeonLogicUnit Unit;
+	// FJsonObjectConverter::JsonObjectStringToUStruct(JSONPayload.ToString(), &Unit, 0, 0);
+	// *UnitOnScope->Get() = Unit;
+	
 	return FReply::Unhandled();
 }
 
@@ -63,14 +62,11 @@ FReply SDungeonEditor::OnDragOver(const FGeometry& MyGeometry, const FDragDropEv
 
 void SDungeonEditor::Construct(const FArguments& Args)
 {
-	FPropertyEditorModule& PropertyEditorModule = FModuleManager::Get().GetModuleChecked<FPropertyEditorModule>(
-		"PropertyEditor");
-
-	editorStore = MakeUnique<TDungeonEditorStore>(lager::make_store<TStoreAction>(
-		FDungeonWorldState{.Map = {.Width = 10, .Height = 10}},
-		lager::with_manual_event_loop{},
-		lager::with_reducer([](auto&& m, auto&& a) { return WorldStateReducer(DUNGEON_FOWARD(m),DUNGEON_FOWARD(a), [] {}); })
-	));
+	// editorStore = MakeUnique<TDungeonEditorStore>(lager::make_store<TStoreAction>(
+	// 	FDungeonWorldState{.Map = {.Width = 10, .Height = 10}},
+	// 	lager::with_manual_event_loop{},
+	// 	lager::with_reducer([](auto&& m, auto&& a) { return WorldStateReducer(DUNGEON_FOWARD(m),DUNGEON_FOWARD(a), [] {}); })
+	// ));
 
 	// IAssetTools& AssetTools = FModuleManager::GetModuleChecked<FAssetToolsModule>("AssetTools").Get();
 	// AssetTools.asset
@@ -98,6 +94,8 @@ void SDungeonEditor::Construct(const FArguments& Args)
 	// anotherOne->SetStructure(UnitOnScope);
 
 	// ClassDetailsView = PropertyEditorModule.CreateDetailView(DetailsViewArgs);
+	FPropertyEditorModule& PropertyEditorModule = FModuleManager::Get()
+	.GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
 
 	StructPropEditor = PropertyEditorModule.CreateStructureDetailView(
 		DetailsViewArgs, FStructureDetailsViewArgs{},
@@ -153,7 +151,7 @@ void SDungeonEditor::Construct(const FArguments& Args)
 				.OnClicked_Lambda([this]
 			              {
 				              editorStore->dispatch(CreateDungeonAction(FSpawnUnit{
-					              .position = contextPosition, .unit = *UnitOnScope->Get()
+					              .Position = contextPosition, .Unit = *UnitOnScope->Get()
 				              }));
 				              return FReply::Handled();
 			              })]

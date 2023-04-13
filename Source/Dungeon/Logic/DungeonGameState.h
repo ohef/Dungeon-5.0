@@ -14,9 +14,15 @@
 
 using UnitId = int;
 
+USTRUCT()
 struct FTurnState
 {
+	GENERATED_BODY()
+	
+	UPROPERTY(EditAnywhere)
 	int teamId;
+	
+	UPROPERTY(EditAnywhere)
 	TSet<int> unitsFinished;
 };
 
@@ -102,7 +108,14 @@ struct FCursorPositionUpdated
 	FIntPoint cursorPosition;
 };
 
+USTRUCT()
+struct FControlledInteraction
+{
+	GENERATED_BODY()
+};
+
 using TInteractionContext = TVariant<
+	FControlledInteraction,
 	FSelectingUnitContext,
 	FMainMenu,
 	FUnitInteraction,
@@ -145,15 +158,29 @@ struct FFocusChanged
 	FName focusName;
 };
 
+struct FAttachLogicToDisplayUnit
+{
+	int Id;
+	ADungeonUnitActor* actor;
+};
+
+struct FChangeTeam
+{
+	int newTeamID;
+};
+
 struct FSpawnUnit
 {
-	FIntPoint position;
-	FDungeonLogicUnit unit;
+	FIntPoint Position;
+	FDungeonLogicUnit Unit;
+	FString PrefabClass;
 };
 
 using TDungeonAction = TVariant<
 	FEmptyVariantState,
 	FSpawnUnit,
+	FChangeTeam,
+	FAttachLogicToDisplayUnit,
 	FInteractionResults,
 	FSteppedAction,
 	FCursorQueryTarget,
@@ -168,16 +195,35 @@ using TDungeonAction = TVariant<
 	FFocusChanged
 >;
 
+UENUM()
+enum EPlayerType
+{
+	Player,
+	Computer
+};
+
+USTRUCT()
+struct FConfig
+{
+	GENERATED_BODY()
+	
+	TArray<EPlayerType> ControllerTypeMapping;
+};
+
 USTRUCT()
 struct FDungeonWorldState
 {
 	GENERATED_BODY()
 
-	FTurnState TurnState;
-
 	TStepAction WaitingForResolution;
 	TArray<TInteractionContext> InteractionsToResolve;
 	TInteractionContext InteractionContext;
+	
+	UPROPERTY(EditAnywhere)
+	FTurnState TurnState;
+	
+	UPROPERTY(EditAnywhere)
+	FConfig Config;
 
 	UPROPERTY(EditAnywhere)
 	FIntPoint CursorPosition;

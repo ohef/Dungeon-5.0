@@ -22,7 +22,9 @@ public class DungeonEditor : ModuleRules
         "Json",
         "JsonUtilities",
         "Slate",
-        "SlateCore", "EditorScriptingUtilities",
+        "SlateCore", 
+        "EditorScriptingUtilities",
+        "EditorFramework", "Blutility",
         }
         );
 

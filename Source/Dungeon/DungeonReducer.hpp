@@ -68,15 +68,18 @@ inline auto GetInteractionFields(FDungeonWorldState Model,
 
 struct FBackTransitions
 {
+	template <typename T>
+	T operator()(const T& t)
+	{
+		return t;
+	}
+
 	TRANSITION_EDGE_FROM_TO(FSelectingUnitContext, FMainMenu)
 	TRANSITION_EDGE_FROM_TO(FMainMenu, FSelectingUnitContext)
 	TRANSITION_EDGE_FROM_TO(FUnitMenu, FSelectingUnitContext)
 	TRANSITION_EDGE_FROM_TO(FSelectingUnitAbilityTarget, FUnitMenu)
 	TRANSITION_EDGE_FROM_TO(FUnitInteraction, FSelectingUnitAbilityTarget)
 };
-
-using FDungeonEffect = lager::effect<TDungeonAction>;
-using FDungeonReducerResult = lager::result<FDungeonWorldState, TDungeonAction>;
 
 template <typename T>
 inline void UpdateInteractionContext(FDungeonWorldState& worldState, T& Value)
@@ -101,7 +104,7 @@ inline void UpdateInteractionContext(FDungeonWorldState& worldState, TInteractio
 	}, Value);
 }
 
-FDungeonReducerResult AddInChangeStateEffect(auto& Model, auto&& ...values)
+FDungeonReducerResult AddInChangeStateEffect(auto& Model, auto&&... values)
 {
 	return {
 		Model, [=](const auto& ctx)
@@ -114,19 +117,20 @@ FDungeonReducerResult AddInChangeStateEffect(auto& Model, auto&& ...values)
 //UHHMMM GROSS DEPARTMENT?
 template <typename TDelegate, bool TReturnTuple = false>
 inline decltype(auto) CreateResolvingFutureOnEventRaise(TDelegate& OnInterpToStopDelegate, const auto& context,
-	typename TDelegate::FDelegate::template TMethodPtrResolver< UPromiseFulfiller >::FMethodPtr FuncPtr,
-	FName InFunctionName )
+                                                        typename TDelegate::FDelegate::template TMethodPtrResolver<
+	                                                        UPromiseFulfiller>::FMethodPtr FuncPtr,
+                                                        FName InFunctionName)
 {
 	auto PromiseFulfiller = NewObject<UPromiseFulfiller>();
 	auto [p,f] = lager::promise::with_loop(context.loop());
 	PromiseFulfiller->promiseToFulfill = MoveTemp(p);
-	OnInterpToStopDelegate.__Internal_AddUniqueDynamic(PromiseFulfiller, FuncPtr, InFunctionName );
+	OnInterpToStopDelegate.__Internal_AddUniqueDynamic(PromiseFulfiller, FuncPtr, InFunctionName);
 	auto chainedFuture = MoveTemp(f).then(
 		[&OnInterpToStopDelegate, PromiseFulfiller, FuncPtr, InFunctionName ]
 		{
 			OnInterpToStopDelegate.__Internal_RemoveDynamic(PromiseFulfiller, FuncPtr, InFunctionName);
 		});
-	
+
 	if constexpr (TReturnTuple)
 		return MakeTuple(PromiseFulfiller, MoveTemp(chainedFuture));
 	else
@@ -165,14 +169,47 @@ struct FCursorPositionUpdatedHandler : public TVariantVisitor<void, TInteraction
 	}
 };
 
-const auto IsNull = [](auto... ptr)
+const auto isNull = [](auto&& ptr)
 {
-	return ( (ptr == nullptr) && ... );
+	return ptr == nullptr;
 };
 
-const auto identity = []{};
+const auto isAll = [](auto&& theCheck, auto&&... values)
+{
+	return ( theCheck(DUNGEON_FOWARD(values)) && ... );
+};
 
-inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction, TFunctionRef<void()>&& signalCheckpoint = identity) -> FDungeonReducerResult
+const auto isSome = [](auto&& theCheck, auto&&... values)
+{
+	return ( theCheck(DUNGEON_FOWARD(values)) || ... );
+};
+
+const auto identity = []
+{
+};
+
+const auto GetConfig = lager::lenses::attr(&FDungeonWorldState::Config);
+
+inline int GetNumberOfPlayers(const FDungeonWorldState& Model)
+{
+	return lager::view(GetConfig | attr(&FConfig::ControllerTypeMapping), Model).Num();
+}
+
+inline TInteractionContext GetStartingContextForControllerType(EPlayerType Controller)
+{
+	switch (Controller)
+	{
+	case Computer:
+		return TInteractionContext(TInPlaceType<FControlledInteraction>{});
+	case Player:
+		return TInteractionContext(TInPlaceType<FSelectingUnitContext>{});
+	default:
+		throw "shit that ain't gonna work";
+	}
+}
+
+inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldAction,
+                              TFunctionRef<void()>&& signalCheckpoint = identity) -> FDungeonReducerResult
 {
 	const auto ReducerView = [&Model](auto&& Lens) { return lager::view(DUNGEON_FOWARD(Lens), Model); };
 	const auto DefaultPassthrough = [&](auto& x) -> FDungeonReducerResult { return {Model, lager::noop}; };
@@ -189,16 +226,37 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				 return Model;
 			 }
 		 )(Model.InteractionContext);
-		
-		return Model;
+	 },
+	 [&](FChangeTeam & action) -> FDungeonReducerResult
+	 {
+		 Model.TurnState.teamId = action.newTeamID;
+		 return Model;
+	 },
+	 [&](FAttachLogicToDisplayUnit& action) -> FDungeonReducerResult
+	 {
+		 Model.unitIdToActor.Add(action.Id, action.actor);
+		 return Model;
 	 },
 	 [&](FSpawnUnit& action) -> FDungeonReducerResult
 	 {
+		 action.Unit.teamId = Model.TurnState.teamId;
 		 const auto& Lens = lager::lenses::fan(
-			 unitDataLens(action.unit.Id),
-			 getUnitAtPointLens(action.position));
-		 auto UpdatedModel = lager::set(Lens, Model, std::make_tuple(TOptional(action.unit), TOptional(action.unit.Id)));
-		 return UpdatedModel;
+			 unitDataLens(action.Unit.Id),
+			 getUnitAtPointLens(action.Position));
+		 auto UpdatedModel = lager::set(Lens, Model,
+		                                std::make_tuple(TOptional(action.Unit), TOptional(action.Unit.Id)));
+		 return {
+			 UpdatedModel,
+			 [unitId = action.Unit.Id, action,prefabClass = action.PrefabClass](FDungeonStore::context_t ctx)
+			 {
+				 UWorld& world = get<UWorld&>(ctx);
+				 ADungeonUnitActor* actor = world.SpawnActor<ADungeonUnitActor>( LoadObject<UBlueprint>(nullptr, *prefabClass)->GeneratedClass);
+
+				 actor->SetActorLocation(FVector(action.Position) * TILE_POINT_SCALE + FVector{0, 0, 1.0});
+				 actor->Id = unitId;
+				 ctx.dispatch(CreateDungeonAction(FAttachLogicToDisplayUnit{.Id = unitId, .actor = actor}));
+			 }
+		 };
 	 },
 	 [&](FTimingInteractionResults& action) -> FDungeonReducerResult
 	 {
@@ -217,6 +275,10 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				 {
 					 ctx.dispatch(
 						 TDungeonAction(TInPlaceType<FCombatAction>{}, waitingAction));
+					 //TODO: eh gross I'm not a big fan of this api
+					 ctx.dispatch(
+						 TDungeonAction(TInPlaceType<FChangeState>{},
+						                TInteractionContext(TInPlaceType<FSelectingUnitContext>{})));
 				 }
 			 };
 		 })(Model.WaitingForResolution);
@@ -236,7 +298,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 
 				   signalCheckpoint();
 				   waitingAction.Destination = actionTarget.target;
-			  	
+
 				   return {
 					   Model,
 					   [DUNGEON_MOVE_LAMBDA(waitingAction = MoveTemp(waitingAction)), signalCheckpoint](auto ctx)
@@ -280,9 +342,9 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					   isTargetNotOnTheSameTeam)
 				   {
 					   signalCheckpoint();
-					   
+
 					   waitingAction.targetedUnit = targetedUnit->Id;
-				   	
+
 					   Model.InteractionsToResolve.Pop();
 
 					   auto val = Model.InteractionsToResolve.Top().
@@ -337,10 +399,8 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					  }
 				  };
 			  }
-			  else
-			  {
-				  return Model;
-			  }
+
+			  return Model;
 		  }
 		 )(Model.InteractionContext);
 	 },
@@ -351,18 +411,6 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 		 signalCheckpoint();
 		 return AddInChangeStateEffect(Model, action.interactions.Top());
 	 },
-	 [&](FWaitAction& action) -> FDungeonReducerResult
-	 {
-		 Model.TurnState.unitsFinished.Add(action.InitiatorId);
-		 Model.InteractionContext.Set<FSelectingUnitContext>({});
-
-		 return {
-			 Model, [](auto& ctx)
-			 {
-				 ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
-			 }
-		 };
-	 },
 	 [&](FChangeState& action) -> FDungeonReducerResult
 	 {
 		 UpdateInteractionContext(Model, action.newState);
@@ -370,11 +418,13 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 	 },
 	 [&](FEndTurnAction& action) -> FDungeonReducerResult
 	 {
-		 const int MAX_PLAYERS = 2;
+		 const int MAX_PLAYERS = GetNumberOfPlayers(Model);
 		 const auto nextTeamId = (Model.TurnState.teamId % MAX_PLAYERS) + 1;
 
 		 Model.TurnState = {nextTeamId};
-		 Model.InteractionContext.Set<FSelectingUnitContext>(FSelectingUnitContext());
+		 const auto& Controllers = ReducerView(GetConfig | attr(&FConfig::ControllerTypeMapping));
+		 const auto& ControllerType = Controllers[nextTeamId - 1];
+		 Model.InteractionContext = GetStartingContextForControllerType(ControllerType);
 		 return Model;
 	 },
 	 [&](FCursorPositionUpdated& action) -> FDungeonReducerResult
@@ -406,7 +456,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 		 return {
 			 Model,
 			 [actor, DungeonLogicMap, MoveAction, DungeonLogicUnit, LastPosition]
-		 (TDungeonStore::context_t context)
+		 (FDungeonStore::context_t context)
 			 {
 				 if (!actor.IsSet()) //TODO Fuck this runs in unit tests
 					 return lager::future{};
@@ -434,10 +484,10 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 
 				 //LMAO - Yeah you can do this
 				 auto springArm = actorPtr
-					->GetWorld()
-					->GetFirstPlayerController()
-					->GetPawn()
-					->FindComponentByClass<USpringArmComponent>();
+				                  ->GetWorld()
+				                  ->GetFirstPlayerController()
+				                  ->GetPawn()
+				                  ->FindComponentByClass<USpringArmComponent>();
 
 				 auto oldParent = springArm->GetAttachParent();
 				 springArm->AttachToComponent(actorPtr->GetRootComponent(),
@@ -460,7 +510,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 		 auto actorMap = ReducerView(attr(&FDungeonWorldState::unitIdToActor));
 		 auto initatorActor = actorMap.FindAndRemoveChecked(initiatorUnit.Id);
 		 actorMap.Remove(action.targetedUnit);
-	 	
+
 		 using TComp = USkeletalMeshComponent;
 		 TArray<TComp*> comps;
 		 for (TTuple<int, TWeakObjectPtr<ADungeonUnitActor>> tuple : actorMap)
@@ -482,8 +532,6 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 			 return Unit;
 		 });
 
-		 Model.InteractionContext.Set<FSelectingUnitContext>({});
-
 		 return {
 			 Model, [initatorActor, DUNGEON_MOVE_LAMBDA(actorMap)](auto& ctx) -> lager::future
 			 {
@@ -492,31 +540,44 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				 UAnimInstance* AnimInstance = FindComponentByClass
 					 ->GetAnimInstance();
 
-				 if (IsNull(AnimInstance, initatorActor->CombatActionMontage))
-					 return {};
+				 auto appearAndCommit = [&ctx, DUNGEON_MOVE_LAMBDA(actorMap)]
+				 {
+					 using TComp = USkeletalMeshComponent;
+					 TArray<TComp*> comps;
+					 for (TTuple<int, TWeakObjectPtr<ADungeonUnitActor>> tuple : actorMap)
+					 {
+						 tuple.Value->GetComponents(comps);
+						 for (auto c : comps)
+						 {
+							 c->SetVisibleFlag(true);
+							 c->MarkRenderStateDirty();
+						 }
+					 }
+
+					 ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
+				 };
+
+				 if (isSome(isNull, AnimInstance, initatorActor->CombatActionMontage))
+				 {
+					 return lager::future().then(appearAndCommit);
+				 }
 
 				 AnimInstance->Montage_Play(initatorActor->CombatActionMontage);
 
-				 TTuple<UPromiseFulfiller*, lager::future> tuple = CreatePromiseFromUnrealDelegate(AnimInstance->OnMontageEnded, ctx, &UPromiseFulfiller::HandleOnMontageEnded);
-
 				 return CreateFutureFromUnrealDelegate(AnimInstance->OnMontageEnded, ctx,
 				                                       &UPromiseFulfiller::HandleOnMontageEnded)
-					 .then([&ctx, DUNGEON_MOVE_LAMBDA(actorMap)]
-					 {
-						 using TComp = USkeletalMeshComponent;
-						 TArray<TComp*> comps;
-						 for (TTuple<int, TWeakObjectPtr<ADungeonUnitActor>> tuple : actorMap)
-						 {
-							 tuple.Value->GetComponents(comps);
-							 for (auto c : comps)
-							 {
-								 c->SetVisibleFlag(true);
-								 c->MarkRenderStateDirty();
-							 }
-						 }
-					 	
-						 ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
-					 });
+					 .then(appearAndCommit);
+			 }
+		 };
+	 },
+	 [&](FWaitAction& action) -> FDungeonReducerResult
+	 {
+		 Model.TurnState.unitsFinished.Add(action.InitiatorId);
+
+		 return {
+			 Model, [](auto& ctx)
+			 {
+				 ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
 			 }
 		 };
 	 },
@@ -567,7 +628,7 @@ const auto WithUndoReducer = [](auto&& reducer)
 				            {
 					            historyModel.Commit();
 				            }
-			            	
+
 				            return {historyModel, eff};
 			            },
 			            LAGER_FWD(loop),

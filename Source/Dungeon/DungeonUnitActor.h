@@ -29,7 +29,6 @@ protected:
 	virtual void BeginPlay() override;
 
 public:
-	int id;
 	FIntPoint lastPosition;
 	using FReaderType = std::tuple<FDungeonLogicUnit, FIntPoint, TOptional<int>>;
 	lager::reader<FReaderType> reader;
@@ -43,12 +42,18 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")
 	void ReactCombatAction(FCombatAction updatedState);
+	
+	UPROPERTY(EditAnywhere)
+	int Id;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	UStaticMesh* UnitIndicatorMesh;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	UStaticMeshComponent* UnitIndicatorMeshComponent;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	USkeletalMeshComponent* UnitModel;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	UInterpToMovementComponent* InterpToMovementComponent;

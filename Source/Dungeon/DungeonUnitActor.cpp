@@ -80,7 +80,7 @@ void ADungeonUnitActor::BeginPlay()
 
 void ADungeonUnitActor::HookIntoStore()
 {
-	reader = UseState(lager::lenses::fan(unitIdToData(id), unitIdToPosition(id), isUnitFinishedLens2(id)))
+	reader = UseState(lager::lenses::fan(unitIdToData(Id), unitIdToPosition(Id), isUnitFinishedLens2(Id)))
 		.make();
 
 	UseEvent().AddUObject(this, &ADungeonUnitActor::HandleGlobalEvent);
@@ -190,9 +190,9 @@ struct FDungeonUnitActorHandler
 
 	void operator()(const FBackAction& event)
 	{
-		_this->SetActorLocation(TilePositionToWorldPoint(_this->reader.zoom(second).make().get()));
 		_this->InterpToMovementComponent->ResetControlPoints();
 		_this->InterpToMovementComponent->StopMovementImmediately();
+		_this->SetActorLocation(TilePositionToWorldPoint(_this->reader.zoom(second).make().get()));
 	}
 
 	void operator()(const FUnitInteraction& newState)

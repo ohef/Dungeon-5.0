@@ -107,9 +107,9 @@ protected:
   void Next();
   void Previous();
 
-  TArray<ZoomLevelNode> storedZoomLevels;
+  TArray<int> zoomLevelsInCentimeters;
+  int currentZoomPointer = 0;
   float previousZoom;
-  ZoomLevelNode* currentZoom;
   
   TSet<FIntPoint> interactionPoints;
 

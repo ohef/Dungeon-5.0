@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "Styling/StarshipCoreStyle.h"
 #include "DungeonMapEditor.h"
+#include "FDungeonMapEditMode.h"
 
 decltype(auto) SomeShit(const FSpawnTabArgs& Args)
 {
@@ -19,15 +20,24 @@ decltype(auto) SomeShit(const FSpawnTabArgs& Args)
 
 inline void FDungeonEditorModule::StartupModule()
 {
-	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(FName(TEXT("SUP")), FOnSpawnTab::CreateStatic(&SomeShit))
-	                        .SetDisplayName(NSLOCTEXT("MapEditor", "TabTitle", "Map Editor"))
-	                        .SetTooltipText(NSLOCTEXT("MapEditor", "TooltipText", "Work you fucking piece of SHIT"));
+	// FGlobalTabmanager::Get()->RegisterNomadTabSpawner(FName(TEXT("SUP")), FOnSpawnTab::CreateStatic(&SomeShit))
+	//                         .SetDisplayName(NSLOCTEXT("MapEditor", "TabTitle", "Map Editor"))
+	//                         .SetTooltipText(NSLOCTEXT("MapEditor", "TooltipText", "Work you fucking piece of SHIT"));
 	// .SetGroup(WorkspaceMenu::GetMenuStructure().GetToolsCategory())
 	// .SetIcon(FSlateIcon(FEditorStyle::GetStyleSetName(), "ClassIcon.UserDefinedStruct"));
+
+	FEditorModeRegistry::Get().RegisterMode<FDungeonMapEditMode>(
+		FDungeonMapEditMode::EM_DungeonMap,
+		NSLOCTEXT("EditorModes", "DungeonMapEditorMode", "Dungeon"),
+		FSlateIcon(),
+		true,
+		300
+	);
 }
 
 inline void FDungeonEditorModule::ShutdownModule()
 {
+	FEditorModeRegistry::Get().UnregisterMode(FDungeonMapEditMode::EM_DungeonMap);
 }
 
 IMPLEMENT_GAME_MODULE(FDungeonEditorModule, DungeonEditor);
