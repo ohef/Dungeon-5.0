@@ -262,13 +262,6 @@ bool FDungeonMapEditMode::HandleClick(FEditorViewportClient* InViewportClient, H
 		.PrefabClass = "/Game/Unit/Unit3.Unit3"
 	}));
 
-	// auto supNigga = InViewportClient->GetWorld()->GetCurrentLevel();
-	// for (auto Element : supNigga->Actors)
-	// {
-	// }
-	//
-	// FEdMode::HandleClick(InViewportClient, HitProxy, Click);
-
 	return true;
 }
 
