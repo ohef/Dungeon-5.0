@@ -1,8 +1,10 @@
 #pragma once
 
+
 #include <CoreMinimal.h>
 
 #include "Engine/DataTable.h"
+#include "UObject/UnrealTypePrivate.h"
 #include "Unit.generated.h"
 
 class ADungeonUnitActor;
@@ -100,7 +102,7 @@ struct FDungeonLogicUnitRow : public FTableRowBase
 
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
   FDungeonLogicUnit unitData;
-  
+
   UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DungeonUnit)
-  TSubclassOf<ADungeonUnitActor> UnrealActor;
+  FSoftObjectPath UnrealActorAsset;
 };

@@ -180,3 +180,33 @@ auto unreal_value_or(T&& t)
         };
     });
 }
+
+template <typename Lens>
+auto unreal_map_opt(Lens&& lens)
+{
+    return zug::comp([lens = std::forward<Lens>(lens)](auto&& f) {
+        return [&, f = LAGER_FWD(f)](auto&& whole) {
+            using Part = TOptional<std::decay_t<decltype(::lager::view(
+                lens,
+                std::declval<std::decay_t<decltype(whole.GetValue())>>()))>>;
+
+            if (whole.IsSet()) {
+                return f(Part{::lager::view(lens, LAGER_FWD(whole).GetValue())})(
+                    [&](Part part) {
+                        if (part.IsSet()) {
+                            return std::decay_t<decltype(whole)>{
+                                ::lager::set(lens,
+                                             LAGER_FWD(whole).GetValue(),
+                                             std::move(part).GetValue())};
+                        } else {
+                            return LAGER_FWD(whole);
+                        }
+                    });
+            } else {
+                return f(Part{})(
+                    [&](auto&&) { return LAGER_FWD(whole); });
+            }
+        };
+    });
+}
+

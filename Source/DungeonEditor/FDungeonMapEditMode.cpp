@@ -2,79 +2,157 @@
 
 #include "ADungeonWorld.h"
 #include "AssetToolsModule.h"
+#include "DataTableEditorModule.h"
+#include "DataTableEditorUtils.h"
 #include "DungeonConstants.h"
 #include "DungeonUnitActor.h"
 #include "EditorModeManager.h"
 #include "EditorUtilitySubsystem.h"
 #include "Slate/Public/Slate.h"
 #include "EngineUtils.h"
+#include "IDataTableEditor.h"
 #include "IPropertyTable.h"
 #include "ISinglePropertyView.h"
+#include "DungeonWorldEditorState.h"
+#include "IDetailTreeNode.h"
 #include "IStructureDetailsView.h"
+#include "Algo/Accumulate.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Lenses/model.hpp"
 #include "Misc/AssertionMacros.h"
 #include "Toolkits/ToolkitManager.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 
-class FHelloWorldToolkit : public FModeToolkit
+/**
+ * 
+ */
+class DUNGEONEDITOR_API SEditorRow : public SMultiColumnTableRow<TSharedRef<FDungeonLogicUnitRow>>
 {
 public:
-	FHelloWorldToolkit()
+	SLATE_BEGIN_ARGS(SEditorRow)
+		{
+		}
+
+	SLATE_END_ARGS()
+
+	/** Constructs this widget with InArgs */
+	virtual void Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& OwnerTableView)
+	{
+		SMultiColumnTableRow<TSharedRef<FDungeonLogicUnitRow>>::Construct(
+			SMultiColumnTableRow<TSharedRef<FDungeonLogicUnitRow>>::FArguments(), OwnerTableView);
+	}
+
+	virtual TSharedRef<SWidget> GenerateWidgetForColumn(const FName& InColumnName) override
+	{
+		UScriptStruct* ScriptStruct = FDungeonLogicUnitRow::StaticStruct();
+		auto daProp = ScriptStruct->FindPropertyByName(InColumnName);
+		if (InColumnName == GET_MEMBER_NAME_CHECKED(FDungeonLogicUnitRow, unitData))
+		{
+			// UE_DEBUG_BREAK();
+		}
+		else if (InColumnName == GET_MEMBER_NAME_CHECKED(FDungeonLogicUnitRow, UnrealActorAsset))
+		{
+			// UE_DEBUG_BREAK();
+		}
+
+		return SNew(STextBlock).Text(FText::FromName(InColumnName));
+	}
+};
+
+class FDungeonMapEditorToolkit : public FModeToolkit
+{
+public:
+	FDungeonMapEditorToolkit()
 	{
 	}
 
-	TSharedPtr<IPropertyTable> PropertyTable;
+	TArray<TSharedRef<FDungeonLogicUnitRow>> UnitEntries;
 	TSharedPtr<IStructureDetailsView> PropertyEditor;
+	TSharedPtr<TStructOnScope<FDungeonWorldEditorState>> BlankStateEditing;
+	TSharedPtr<SListView<TSharedRef<FDungeonLogicUnitRow>>> ListView;
+	TSharedPtr<SHeaderRow> ThisHeader;
+	TWeakObjectPtr<ADungeonWorld> WorldPtr;
 
 	void Init(const TSharedPtr<IToolkitHost>& InitToolkitHost, ADungeonWorld* World)
 	{
-		
+		WorldPtr = World;
 		FPropertyEditorModule& PropertyEditorModule = FModuleManager::Get()
 			.GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
 
-		// FSinglePropertyParams Params;
-		// TSharedPtr<ISinglePropertyView> PropertyView
-		// = PropertyEditorModule.CreateSingleProperty( World, "currentWorldState", Params);
+		BlankStateEditing = MakeShared<TStructOnScope<FDungeonWorldEditorState>>();
+		BlankStateEditing->InitializeAs<FDungeonWorldEditorState>();
 
-		auto EditThisShit = MakeShared<TStructOnScope<FDungeonWorldState>>();
-		EditThisShit->InitializeAs<FDungeonWorldState>();
 		FDetailsViewArgs Params2;
 		FStructureDetailsViewArgs ViewArgs;
-		PropertyEditor = PropertyEditorModule.CreateStructureDetailView(Params2, ViewArgs, EditThisShit);
-		PropertyEditor->GetOnFinishedChangingPropertiesDelegate().AddLambda([EditThisShit,World](const FPropertyChangedEvent& event)
-		{
-			auto Property = CastField<FIntProperty>(event.Property);
-			if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(FTurnState, teamId))
+		PropertyEditor = PropertyEditorModule.CreateStructureDetailView(Params2, ViewArgs, BlankStateEditing);
+		PropertyEditor->GetOnFinishedChangingPropertiesDelegate().AddLambda(
+			[this,World](const FPropertyChangedEvent& event)
 			{
-				World->WorldState->dispatch(CreateDungeonAction(FChangeTeam{
-					.newTeamID = Property->GetPropertyValue(&EditThisShit->Get()->TurnState)
-				}));
-			}
-			UE_LOG(LogTemp, Display, TEXT( "This is it %s" ), *event.Property->GetFName().ToString());
-		});
+				if (event.Property->GetFName() == GET_MEMBER_NAME_CHECKED(FTurnState, teamId))
+				{
+					auto Property = CastField<FIntProperty>(event.Property);
+					World->WorldState->dispatch(CreateDungeonAction(FChangeTeam{
+						.newTeamID = Property->GetPropertyValue(&BlankStateEditing->Get()->WorldState.TurnState)
+					}));
+				}
+				else if (event.Property->GetFName() == GET_MEMBER_NAME_CHECKED(FDungeonWorldEditorState, Table))
+				{
+					auto Property = CastField<FObjectProperty>(event.Property);
+					auto anotherOne = BlankStateEditing->Get();
+					auto rando = Property->GetObjectPropertyValue(anotherOne);
+					auto wew = Cast<UDataTable>(rando);
 
-		PropertyTable = PropertyEditorModule.CreatePropertyTable();
-		PropertyTable->AddRow(World);
-		
-		DetailView = PropertyEditorModule.CreateDetailView(Params2);
-		DetailView->SetObject(World);
-		
-		SAssignNew(HelloWorldButton, SVerticalBox)
-		// + SVerticalBox::Slot()[
-		// 	SNew(SEditableTextBox).Text(FText::FromString("Hey this is some shit dude you think you can"))
-		// ]
-		// + SVerticalBox::Slot()[
-		// 	DetailView.ToSharedRef()
-		// ]
-		// + SVerticalBox::Slot()[
-		// 	PropertyEditorModule.CreatePropertyTableWidget(PropertyTable.ToSharedRef())
-		// ]
-		+ SVerticalBox::Slot()[
-			PropertyEditor->GetWidget().ToSharedRef()
-		]
-		;
+					TArray<FDungeonLogicUnitRow*> out;
+					anotherOne->Table->GetAllRows("", out);
+
+					UnitEntries.Empty();
+					Algo::Transform(out, UnitEntries, [](auto x) { return MakeShared<FDungeonLogicUnitRow>(*x); });
+					ListView->RebuildList();
+					// UE_DEBUG_BREAK();
+				}
+
+				// UE_LOG(LogTemp, Display, TEXT( "This is it %s" ), *event.Property->GetFName().ToString());
+			});
+
+		UScriptStruct* ScriptStruct = FDungeonLogicUnitRow::StaticStruct();
+		FField* field = ScriptStruct->ChildProperties;
+		SAssignNew(ThisHeader, SHeaderRow);
+
+		while (field != nullptr)
+		{
+			ThisHeader->AddColumn(
+				SHeaderRow::Column(field->GetFName())
+				.DefaultLabel(FText::FromString(field->GetName())));
+			field = field->Next;
+		}
+
+		SAssignNew(SVerticalBoxEditor, SVerticalBox)
+			+ SVerticalBox::Slot()[
+				PropertyEditor->GetWidget().ToSharedRef()
+			]
+			+ SVerticalBox::Slot()[
+				SAssignNew(ListView, SListView<TSharedRef<FDungeonLogicUnitRow>>)
+				.OnSelectionChanged(this, &FDungeonMapEditorToolkit::OnSelectionChanged)
+				.HeaderRow(ThisHeader)
+				.OnGenerateRow(this, &FDungeonMapEditorToolkit::OnGenerateRowForList)
+				.ListItemsSource(&UnitEntries)
+			];
 
 		FModeToolkit::Init(InitToolkitHost);
+	}
+
+	void OnSelectionChanged(SListView<TSharedRef<FDungeonLogicUnitRow>>::NullableItemType item, ESelectInfo::Type type)
+	{
+		if (BlankStateEditing.IsValid() && BlankStateEditing->IsValid() && item.IsValid())
+		{
+			BlankStateEditing->Get()->CurrentUnit = *item;
+		}
+	}
+
+	TSharedRef<class ITableRow> OnGenerateRowForList(TSharedRef<FDungeonLogicUnitRow> arg,
+	                                                 const TSharedRef<class STableViewBase>& table)
+	{
+		return SNew(SEditorRow, table);
 	}
 
 	virtual FName GetToolkitFName() const override
@@ -84,30 +162,23 @@ public:
 
 	virtual TSharedPtr<SWidget> GetInlineContent() const override
 	{
-		return HelloWorldButton;
+		return SVerticalBoxEditor;
 	}
-
 
 	virtual FText GetBaseToolkitName() const override;
 	virtual FDungeonMapEditMode* GetEditorMode() const override;
 
 private:
-	FReply OnHelloWorldButtonClicked()
-	{
-		UE_LOG(LogTemp, Display, TEXT("Hello World!"));
-		return FReply::Handled();
-	}
-
-	TSharedPtr<IDetailsView> DetailView;
-	TSharedPtr<SVerticalBox> HelloWorldButton;
+	
+	TSharedPtr<SVerticalBox> SVerticalBoxEditor;
 };
 
-FText FHelloWorldToolkit::GetBaseToolkitName() const
+FText FDungeonMapEditorToolkit::GetBaseToolkitName() const
 {
 	return FText::FromString("HelloWorldToolkit");
 }
 
-FDungeonMapEditMode* FHelloWorldToolkit::GetEditorMode() const
+FDungeonMapEditMode* FDungeonMapEditorToolkit::GetEditorMode() const
 {
 	return (FDungeonMapEditMode*)GLevelEditorModeTools().GetActiveMode(FDungeonMapEditMode::EM_DungeonMap);
 }
@@ -115,61 +186,25 @@ FDungeonMapEditMode* FHelloWorldToolkit::GetEditorMode() const
 void FDungeonMapEditMode::Initialize()
 {
 	FEdMode::Initialize();
-	
-	// // Load the asset using the editor's object finder helper.
-	// static ConstructorHelpers::FObjectFinder<ADungeonUnitActor> MyClassFinder(TEXT("/Game/Unit/Unit3.Unit3"));
-	//
-	//    // Get a reference to the AssetTools module.
-	//    FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
-	//
-	//    // Get a reference to the AssetRegistry module.
-	//    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	//
-	//    // Create a filter for the assets you want to find.
-	//    FARFilter AssetFilter;
-	//    AssetFilter.ObjectPaths.Add(TEXT("/Game/Unit/Unit3.Unit3"));
-	//    AssetFilter.bRecursivePaths = true; // Search in all directories.
-	//
-	//    // Search for the assets that match the filter.
-	//    TArray<FAssetData> AssetDataArray;
-	//    AssetRegistryModule.Get().GetAssets(AssetFilter, AssetDataArray);
-
-	// // Select the first texture asset found.
-	// if (AssetDataArray.Num() > 0)
-	// {
-	//     FAssetData& AssetData = AssetDataArray[0];
-	//     TArray<FAssetData> SelectedAssets = { AssetData };
-	//
-	//     // Use the AssetTools module to get a reference to the selected texture asset.
-	//     TArray<UObject*> OutObjects;
-	//     AssetToolsModule.Get().GetAssetRegistry().GetObjects(SelectedAssets, OutObjects);
-	//
-	//     if (OutObjects.Num() > 0)
-	//     {
-	//         UTexture2D* Texture = Cast<UTexture2D>(OutObjects[0]);
-	//         if (Texture != nullptr)
-	//         {
-	//             // Do something with the texture asset.
-	//             ...
-	//         }
-	//     }
-	// }
 }
 
 void FDungeonMapEditMode::Enter()
 {
 	TSubclassOf<ADungeonWorld> filterClass = ADungeonWorld::StaticClass();
 	DungeonWorld = FindAllActorsOfType(GetWorld(), filterClass);
-	DungeonWorld->currentWorldState = {};
-	DungeonWorld->currentWorldState.Map.Height = 15;
-	DungeonWorld->currentWorldState.Map.Width = 15;
-	DungeonWorld->currentWorldState.InteractionContext.Set<FSelectingUnitContext>({});
-	DungeonWorld->currentWorldState.TurnState.teamId = 1;
-	DungeonWorld->ResetStore();
 
-	auto HelloWorldToolkit = new FHelloWorldToolkit;
-	Toolkit = MakeShareable(HelloWorldToolkit);
-	HelloWorldToolkit->Init(Owner->GetToolkitHost(), DungeonWorld.Get());
+	FDataTableEditorModule& DataTableEditorModule = FModuleManager::LoadModuleChecked<FDataTableEditorModule>(
+		"DataTableEditor");
+
+	EditorModeToolkit = MakeShareable(new FDungeonMapEditorToolkit);
+	Toolkit = EditorModeToolkit;
+	EditorModeToolkit->Init(Owner->GetToolkitHost(), DungeonWorld.Get());
+
+	// UDataTable* UnitTable = NewObject<UDataTable>();
+	// UnitTable->RowStruct = FDungeonLogicUnit::StaticStruct();
+	// auto TheEditorThing = DataTableEditorModule
+	// 	.CreateDataTableEditor(EToolkitMode::Type::Standalone, Owner->GetToolkitHost(), UnitTable);
+	// TheEditorThing->GetEditingObject();
 
 	for (TActorIterator<ADungeonUnitActor> Iter(GetWorld(), ADungeonUnitActor::StaticClass()); Iter; ++Iter)
 	{
@@ -185,42 +220,15 @@ void FDungeonMapEditMode::Enter()
 	AssetFilter.ObjectPaths.Add(TEXT("/Game/Unit/Unit3.Unit3"));
 	AssetFilter.bRecursivePaths = true; // Search in all directories.
 
-	auto wew = Cast<UBlueprint>(
+	auto UnitActor = Cast<UBlueprint>(
 		AssetRegistryModule.Get().GetAssetByObjectPath(TEXT("/Game/Unit/Unit3.Unit3")).GetAsset());
-
-	// auto hey = GetWorld()->SpawnActor<AActor>(wew, FTransform(FVector(100, 100, 100)));
-	// auto test = LoadClass<AActor>(nullptr,TEXT("/Game/Unit/Unit3.Unit3"));
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.ObjectFlags |= RF_Transient;
 	SpawnParams.bTemporaryEditorActor = true;
 	SpawnParams.bHideFromSceneOutliner = true;
 
-	PreviewActor = GetWorld()->SpawnActor<ADungeonUnitActor>(wew->GeneratedClass, SpawnParams);
-	// // Search for the assets that match the filter.
-	// TArray<FAssetData> AssetDataArray;
-	// AssetRegistryModule.Get().GetAssets(AssetFilter, AssetDataArray);
-	//
-	// // Select the first texture asset found.
-	// if (AssetDataArray.Num() > 0)
-	// {
-	//     FAssetData& AssetData = AssetDataArray[0];
-	//     TArray<FAssetData> SelectedAssets = { AssetData };
-	//
-	//     // Use the AssetTools module to get a reference to the selected texture asset.
-	//     TArray<UObject*> OutObjects;
-	//     AssetToolsModule.Get().GetAssetRegistry().GetObjects(SelectedAssets, OutObjects);
-	//
-	//     if (OutObjects.Num() > 0)
-	//     {
-	//         UTexture2D* Texture = Cast<UTexture2D>(OutObjects[0]);
-	//         if (Texture != nullptr)
-	//         {
-	//             // Do something with the texture asset.
-	//             ...
-	//         }
-	//     }
-	// }
+	PreviewActor = GetWorld()->SpawnActor<ADungeonUnitActor>(UnitActor->GeneratedClass, SpawnParams);
 
 	FEdMode::Enter();
 }
@@ -243,25 +251,24 @@ bool FDungeonMapEditMode::HandleClick(FEditorViewportClient* InViewportClient, H
 	auto CursorPosition = DungeonWorld->WorldState->zoom(
 		SimpleCastTo<FDungeonWorldState> |
 		lager::lenses::attr(&FDungeonWorldState::CursorPosition)).make().get();
-	auto unit = FDungeonLogicUnit();
-	unit.Id = unitId++;
-	unit.damage = 10;
-	unit.attackRange = 1;
-	unit.Movement = 3;
-	unit.Name = "someName";
-	unit.HitPoints = 20;
-	unit.HitPointsTotal = 20;
-	unit.teamId = DungeonWorld->WorldState->zoom(
-		SimpleCastTo<FDungeonWorldState>
-		| lager::lenses::attr(&FDungeonWorldState::TurnState)
-		| lager::lenses::attr(&FTurnState::teamId)).make().get();
-
+	
+	auto unit = EditorModeToolkit->BlankStateEditing->Get()->CurrentUnit;
+	unit.unitData.Id = ++unitId;
+	
 	DungeonWorld->WorldState->dispatch(CreateDungeonAction(FSpawnUnit{
 		.Position = CursorPosition,
-		.Unit = unit,
-		.PrefabClass = "/Game/Unit/Unit3.Unit3"
+		.Unit = unit.unitData,
+		.PrefabClass = unit.UnrealActorAsset.GetAssetPathString()
 	}));
 
+	auto justAddedThis = DungeonWorld->WorldState->zoom(
+		SimpleCastTo<FDungeonWorldState> | unitIdToActor(unit.unitData.Id)).make().get();
+	TDungeonActionDispatched wew;
+	justAddedThis->CreateDynamicMaterials();
+	justAddedThis->HookIntoStore(*DungeonWorld->WorldState, wew);
+
+	// auto didChange = EditorModeToolkit->BlankStateEditing->Get()->Table;
+	
 	return true;
 }
 
@@ -308,7 +315,21 @@ bool FDungeonMapEditMode::CapturedMouseMove(FEditorViewportClient* InViewportCli
 			View, InViewportClient, InMouseX, InMouseY);
 
 		struct FHitResult OutHit;
-		auto PrimComponent = const_cast<UPrimitiveComponent*>(hitActor->PrimComponent);
+
+		if (hitActor == nullptr && hitActor->PrimComponent == nullptr)
+		{
+			return true;
+		}
+
+		if (!hitActor->PrimComponent)
+		{
+			return false;
+		}
+		
+		auto PrimComponent = MakeWeakObjectPtr(const_cast<UPrimitiveComponent*>(hitActor->PrimComponent));
+		if (PrimComponent == nullptr)
+			return false;
+
 		FCollisionQueryParams Stuff{};
 		bool bLineTraceComponent = PrimComponent->LineTraceComponent(OutHit, vsl.GetOrigin(), vsl.GetDirection() * 1e7,
 		                                                             Stuff);

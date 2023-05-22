@@ -41,12 +41,12 @@ void UDungeonSubmitHandlerWidget::RenderProperties(TArray<FIntervalPriority> Int
     PanelSlot->SetPosition({0, 0});
     PanelSlot->SetAlignment({0.5, 0.5});
     auto dynamicMaterial = UKismetMaterialLibrary::CreateDynamicMaterialInstance(this, CircleMaterial);
-    double minR = 1.0 - (interval.Min / TimelineLength);
-    dynamicMaterial->SetScalarParameterValue(FName(TEXT("InnerRadius")), minR * .5);
-    double maxR = (1.0 - interval.Max / TimelineLength);
-    dynamicMaterial->SetScalarParameterValue(FName(TEXT("OuterRadius")), maxR * .5);
+    double innerRadius = 1.0 - (interval.Min / TimelineLength);
+    dynamicMaterial->SetScalarParameterValue(FName(TEXT("InnerRadius")), innerRadius * .5);
+    double outerRadius = (1.0 - interval.Max / TimelineLength);
+    dynamicMaterial->SetScalarParameterValue(FName(TEXT("OuterRadius")), outerRadius * .5);
+    dynamicMaterial->SetScalarParameterValue(FName(TEXT("Opacity")), .25f);
     circleWidget->SetBrushFromMaterial(dynamicMaterial);
-    circleWidget->SetBrushColor(FLinearColor::White.CopyWithNewOpacity(.25));
   }
 
   InitialOuterCircleSize = circleSize;

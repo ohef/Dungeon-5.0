@@ -82,6 +82,8 @@ public:
 	ADungeonGameModeBase* gm;
 };
 
+DECLARE_MULTICAST_DELEGATE_OneParam(TDungeonActionDispatched, const TDungeonAction&)
+
 UCLASS()
 class DUNGEON_API ADungeonGameModeBase : public AGameModeBase,
                                          public FStoreConnectedClass<ADungeonGameModeBase, TDungeonAction>
@@ -93,9 +95,7 @@ class DUNGEON_API ADungeonGameModeBase : public AGameModeBase,
 public:
 	virtual void BeginPlay() override;
 	virtual void Tick(float time) override;
-	FText GetCurrentTurnId() const;
 
-	DECLARE_MULTICAST_DELEGATE_OneParam(TDungeonActionDispatched, const TDungeonAction&)
 	TDungeonActionDispatched DungeonActionDispatched;
 
 	TArray<UViewingModel*> viewingModels;
@@ -133,7 +133,6 @@ public:
 	TSubclassOf<UDungeonMainWidget> MainWidgetClass;
 	TUniquePtr<FDungeonStore> store;
 	lager::reader<SIZE_T> interactionReader;
-	lager::queue_event_loop QueueEventLoop;
 
 	lager::future Dispatch(TDungeonAction&& unionAction);
 	

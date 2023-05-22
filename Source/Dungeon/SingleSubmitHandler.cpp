@@ -1,13 +1,10 @@
 ﻿#include "SingleSubmitHandler.h"
 
-#include "DungeonConstants.h"
 #include "Actor/DungeonPlayerController.h"
-#include "Actor/MapCursorPawn.h"
 #include "Algo/Accumulate.h"
 #include "Algo/Transform.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/CanvasPanelSlot.h"
-#include "Kismet/KismetSystemLibrary.h"
 #include "UObject/ConstructorHelpers.h"
 
 USingleSubmitHandler::USingleSubmitHandler(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
@@ -39,9 +36,9 @@ void USingleSubmitHandler::BeginPlay()
   HandlerWidget->Initialize();
   HandlerWidget->AddToViewport();
 
-  auto widget = FWidgetAnimationDynamicEvent();
-  widget.BindDynamic(this, &USingleSubmitHandler::RemoveAfterAnimationFinished);
-  HandlerWidget->BindToAnimationFinished(HandlerWidget->OuterDissappear, MoveTemp(widget));
+  auto widgetHandler = FWidgetAnimationDynamicEvent();
+  widgetHandler.BindDynamic(this, &USingleSubmitHandler::RemoveAfterAnimationFinished);
+  HandlerWidget->BindToAnimationFinished(HandlerWidget->OuterDissappear, MoveTemp(widgetHandler));
   HandlerWidget->SetVisibility(ESlateVisibility::Collapsed);
 
   this->SetComponentTickEnabled(false);

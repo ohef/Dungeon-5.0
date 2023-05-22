@@ -8,6 +8,7 @@
 #include "Dungeon/Actions/EndTurnAction.h"
 #include "Dungeon/Actions/MoveAction.h"
 #include "Rhythm/IntervalPriority.h"
+
 #include "DungeonGameState.generated.h"
 
 //vim macro: OUSTRUCT()<C-c>jjoGENERATED_BODY()
@@ -176,24 +177,16 @@ struct FSpawnUnit
 	FString PrefabClass;
 };
 
-using TDungeonAction = TVariant<
-	FEmptyVariantState,
-	FSpawnUnit,
-	FChangeTeam,
-	FAttachLogicToDisplayUnit,
-	FInteractionResults,
-	FSteppedAction,
-	FCursorQueryTarget,
-	FChangeState,
-	FCursorPositionUpdated,
-	FMoveAction,
-	FCombatAction,
-	FEndTurnAction,
-	FBackAction,
-	FWaitAction,
-	FCommitAction,
-	FFocusChanged
->;
+// struct FDamageAction
+// {
+// 	int unitID;
+// 	int damageValue;
+// };
+
+struct FKillUnitAction
+{
+	int unitID;
+};
 
 UENUM()
 enum EPlayerType
@@ -234,3 +227,29 @@ struct FDungeonWorldState
 	UPROPERTY(EditAnywhere)
 	TMap<int, TWeakObjectPtr<ADungeonUnitActor>> unitIdToActor;
 };
+
+struct FRecordAction
+{
+	FDungeonWorldState Record;
+};
+
+using TDungeonAction = TVariant<
+	FEmptyVariantState,
+	FSpawnUnit,
+	FChangeTeam,
+	FAttachLogicToDisplayUnit,
+	FInteractionResults,
+	FSteppedAction,
+	FCursorQueryTarget,
+	FChangeState,
+	FCursorPositionUpdated,
+	FMoveAction,
+	FKillUnitAction,
+	FCombatAction,
+	FEndTurnAction,
+	FBackAction,
+	FWaitAction,
+	FCommitAction,
+	FFocusChanged,
+	FRecordAction
+>;

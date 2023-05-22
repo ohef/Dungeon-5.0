@@ -17,15 +17,13 @@ ADungeonPlayerController::ADungeonPlayerController(const FObjectInitializer& Obj
 void ADungeonPlayerController::BeginPlay()
 {
   interactionReader = UseState(interactionContextLens | unreal_alternative<FUnitInteraction> ).make();
-  interactionReader.watch([this](const TOptional<FUnitInteraction>& UnitInteraction)
+  interactionReader.watch([this](const TOptional<FUnitInteraction>& maybeInteraction)
   {
-    if(UnitInteraction.IsSet()){
+    if(maybeInteraction){
       auto headFocus =
-      UseViewState(unitIdToActor(UnitInteraction->targetIDUnderFocus) | ignoreOptional)
+      UseViewState(unitIdToActor(maybeInteraction->targetIDUnderFocus))
       ->FindComponentByClass<USkeletalMeshComponent>()
       ->GetSocketLocation("head");
-      
-      FIntPoint Point = UseViewState(unitIdToPosition(UnitInteraction->targetIDUnderFocus));
       
       GetWorld()
         ->GetAuthGameMode<ADungeonGameModeBase>()
@@ -50,7 +48,7 @@ void ADungeonPlayerController::BeginPlay()
 void ADungeonPlayerController::BeginInteraction(TOptional<FInteractionResults> interactionResults)
 {
   if(interactionResults.IsSet())
-    StoreDispatch(TDungeonAction(TInPlaceType<FTimingInteractionResults>{}, interactionResults.GetValue()));
+    StoreDispatch(TDungeonAction(TInPlaceType<FInteractionResults>{}, interactionResults.GetValue()));
 }
 
 void ADungeonPlayerController::Tick(float DeltaSeconds)

@@ -130,8 +130,8 @@ bool UDungeonMainWidget::Initialize()
 
 	ActionChecks.Add(visibilityCheck(Move, [&]
 	{
-		return UseViewState(interactionContextLens | unreal_alternative<FUnitMenu> | ignoreOptional).
-		       deactivatedAbilities.Contains("MoveAction");
+		return UseViewState(interactionContextLens | unreal_alternative<FUnitMenu> | ignoreOptional)
+		.deactivatedAbilities.Contains("MoveAction");
 	}));
 
 	return true;

@@ -14,8 +14,6 @@ public:
 
 	TUniquePtr<FDungeonStore> WorldState;
 
-	lager::cursor<FHistoryModel> WorldCursor;
-	
 	UPROPERTY(VisibleAnywhere)
 	FDungeonWorldState currentWorldState;
 

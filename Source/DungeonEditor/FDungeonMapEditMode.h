@@ -3,12 +3,15 @@
 #include "DungeonUnitActor.h"
 #include "EdMode.h"
 
+class FDungeonMapEditorToolkit;
+
 class DUNGEONEDITOR_API FDungeonMapEditMode : public FEdMode
 {
 public:
 	static inline FEditorModeID EM_DungeonMap = TEXT("EM_DungeonMap");
 	TWeakObjectPtr<ADungeonUnitActor> PreviewActor;
 	TWeakObjectPtr<ADungeonWorld> DungeonWorld;
+	TSharedPtr<FDungeonMapEditorToolkit> EditorModeToolkit;
 
 	virtual void Initialize() override;
 

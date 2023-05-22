@@ -18,10 +18,6 @@ void ADungeonWorld::ResetStore()
 		WithUndoReducer(WorldStateReducer)
 	)));
 
-	WorldCursor = WorldState->setter([](FHistoryModel value)
-	{
-	});
-	
 	WorldState->bind([this](auto model)
 	{
 		this->currentWorldState = model;

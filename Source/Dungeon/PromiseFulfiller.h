@@ -18,7 +18,10 @@ public:
 	lager::promise promiseToFulfill = lager::promise::invalid().first;
 
 	UFUNCTION()
-	void HandleOnInterpToStop(const FHitResult& x, float y) { promiseToFulfill(); };
+	void HandleOnInterpToStop(const FHitResult& x, float y)
+	{
+		promiseToFulfill();
+	};
 	
 	UFUNCTION()
 	void HandleOnMontageEnded(UAnimMontage* Montage, bool bInterrupted)

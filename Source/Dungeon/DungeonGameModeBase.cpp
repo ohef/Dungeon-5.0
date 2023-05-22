@@ -10,7 +10,6 @@
 #include "Actor/TileVisualizationActor.h"
 #include "DungeonUnitActor.h"
 #include "Widget/DungeonMainWidget.h"
-#include "JsonObjectConverter.h"
 #include "Algo/Accumulate.h"
 #include "Engine/DataTable.h"
 #include "Engine/StaticMeshActor.h"
@@ -20,19 +19,6 @@
 #include "lager/event_loop/manual.hpp"
 #include "Lenses/model.hpp"
 #include "Logic/SimpleTileGraph.h"
-#include "Serialization/Csv/CsvParser.h"
-
-template <typename T>
-struct TIsOptional
-{
-	const static bool Value = false;
-};
-
-template <typename T>
-struct TIsOptional<TOptional<T>>
-{
-	const static bool Value = true;
-};
 
 auto localView = [&](auto model, auto... lenses)
 {
@@ -45,6 +31,18 @@ auto localView = [&](auto model, auto... lenses)
 	{
 		return lager::view(lenses..., model);
 	}
+};
+
+template <typename T>
+struct TIsOptional
+{
+	enum { Value = false };
+};
+
+template <typename T>
+struct TIsOptional<TOptional<T>>
+{
+	enum { Value = true };
 };
 
 inline FReply GenerateMoves(ADungeonGameModeBase* gm)
@@ -111,9 +109,9 @@ inline FReply GenerateMoves(ADungeonGameModeBase* gm)
 				const FDungeonWorldState& state = **gm->store;
 				TArray<TActionsTuple> actions;
 
-				auto [aiPosition,aiUnitData] =
-					lager::view(fan(unitIdToPosition(aiUnitId), unitDataLens(aiUnitId)), state);
-					
+				auto [aiPosition,aiUnitData] = lager::view(fan(unitIdToPosition(aiUnitId), unitDataLens(aiUnitId)),
+				                                           state);
+
 				auto interactablePoints = manhattanReachablePoints(
 					state.Map.Width - 1,
 					state.Map.Height - 1,
@@ -130,11 +128,12 @@ inline FReply GenerateMoves(ADungeonGameModeBase* gm)
 					auto zaTup = TActionsTuple(FMoveAction(aiUnitId, movePoint), TOptional<FCombatAction>());
 					auto& [moveA,optCombat] = zaTup;
 					const auto& [distance, unitId] = closestUnitMap[movePoint.X][movePoint.Y];
+					auto possibleAttackUnit = localView(
+						state, unitDataLens(unitId) | unreal_map_opt(attr(&FDungeonLogicUnit::Id)));
 
-					if (distance <= aiUnitData->attackRange)
+					if (distance <= aiUnitData->attackRange && possibleAttackUnit)
 					{
-						optCombat = FCombatAction(aiUnitId, localView(state, unitDataLens(unitId))->Id,
-						                          aiUnitData->damage);
+						optCombat = FCombatAction(aiUnitId, *possibleAttackUnit, aiUnitData->damage);
 					}
 					actions.Add(zaTup);
 				}
@@ -181,7 +180,7 @@ inline FReply GenerateMoves(ADungeonGameModeBase* gm)
 				// gm->TileVisualizationComponent->Clear();
 				// gm->TileVisualizationComponent->ShowTiles(combatToDisp, FLinearColor::Green);
 				// gm->TileVisualizationComponent->ShowTiles(moveToDisp, FLinearColor::Yellow);
-				
+
 				auto runThis = [gm](TActionsTuple&& tuple)
 				{
 					auto moveAction = tuple.Key;
@@ -191,7 +190,10 @@ inline FReply GenerateMoves(ADungeonGameModeBase* gm)
 						{
 							if (possibleCombat.IsSet())
 							{
-								return gm->Dispatch(FCombatAction(*possibleCombat));
+								return gm->Dispatch(FCombatAction(*possibleCombat)).then([=]
+								{
+									return gm->Dispatch(FWaitAction{id});
+								});
 							}
 
 							return gm->Dispatch(FWaitAction{id});
@@ -206,7 +208,7 @@ inline FReply GenerateMoves(ADungeonGameModeBase* gm)
 	{
 		gm->Dispatch(FEndTurnAction{});
 	});
-	
+
 	return FReply::Handled();
 }
 
@@ -254,12 +256,12 @@ auto TapReducer(Fn&& effectFunction)
 							            oldEffect(DUNGEON_FOWARD(ctx));
 							            effectFunction(a);
 						            }
-					            	else
-					            	{
-						                auto&& daFuture = oldEffect(DUNGEON_FOWARD(ctx));
+						            else
+						            {
+							            auto&& daFuture = oldEffect(DUNGEON_FOWARD(ctx));
 							            effectFunction(a);
-					            		return daFuture;
-					            	}
+							            return daFuture;
+						            }
 					            }
 				            };
 			            },
@@ -273,91 +275,6 @@ auto TapReducer(Fn&& effectFunction)
 void ADungeonGameModeBase::BeginPlay()
 {
 	Super::BeginPlay();
-
-	FPropertyEditorModule& PropertyEditorModule = FModuleManager::Get()
-	.GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
-
-	TArray<FDungeonLogicUnitRow*> unitsArray;
-	UnitTable->GetAllRows(TEXT(""), unitsArray);
-	TMap<int, FDungeonLogicUnitRow> loadedUnitTypes;
-	for (auto unit : unitsArray)
-	{
-		loadedUnitTypes.Add(unit->unitData.Id, *unit);
-	}
-
-	auto Filename = FPaths::Combine(FPaths::ProjectDir(), TEXT("MapLevel.json"));
-
-	FString readJsonFile;
-	FFileHelper::LoadFileToString(readJsonFile, ToCStr(Filename));
-
-	FDungeonLogicMap testa;
-	FJsonObjectConverter::JsonObjectStringToUStruct(readJsonFile, &testa);
-
-	auto testMap =
-		FDungeonLogicMap{
-			.Width = 10, .Height = 10,
-			.TileAssignment = {
-				{{1, 2}, 12},
-				{{3, 1}, 1}
-			}
-		};
-
-	FString output;
-	FJsonObjectConverter::UStructToJsonObjectString(testMap, output);
-	FJsonObjectConverter::JsonObjectStringToUStruct(output, &testMap);
-
-	FFileHelper::SaveStringToFile(output, ToCStr(Filename));
-
-	Game.Config = {.ControllerTypeMapping = {Player, Computer}};
-	Game.InteractionContext.Set<FSelectingUnitContext>(FSelectingUnitContext{});
-
-	FString StuffR;
-	FString TheStr = FPaths::Combine(FPaths::ProjectDir(), TEXT("theBoard.csv"));
-	// if (FFileHelper::LoadFileToString(StuffR, ToCStr(TheStr)))
-	// {
-	// 	const FCsvParser Parser(MoveTemp(StuffR));
-	// 	const auto& Rows = Parser.GetRows();
-	// 	int32 height = Rows.Num();
-	//
-	// 	Game.Map.LoadedTiles.Add(1, {1, "Grass", 1});
-	//
-	// 	for (int i = 0; i < height; i++)
-	// 	{
-	// 		int32 width = Rows[i].Num();
-	// 		Game.Map.Height = height;
-	// 		Game.Map.Width = width;
-	// 		Game.TurnState.teamId = 1;
-	// 		for (int j = 0; j < width; j++)
-	// 		{
-	// 			int dataIndex = i * width + j;
-	// 			auto value = FCString::Atoi(Rows[i][j]);
-	//
-	// 			Game.Map.TileAssignment.Add({i, j}, 1);
-	//
-	// 			if (loadedUnitTypes.Contains(value))
-	// 			{
-	// 				auto zaRow = loadedUnitTypes[value];
-	// 				auto zaunit = zaRow.unitData;
-	// 				zaunit.Id = dataIndex;
-	// 				zaunit.Name = FString::FormatAsNumber(dataIndex);
-	// 				Game.Map.LoadedUnits.Add(zaunit.Id, zaunit);
-	//
-	// 				FIntPoint positionPlacement{i, j};
-	// 				Game.Map.UnitAssignment.Add(positionPlacement, dataIndex);
-	//
-	// 				auto unitActor = GetWorld()
-	// 					->SpawnActorDeferred<ADungeonUnitActor>(
-	// 						zaRow.UnrealActor.Get(),
-	// 						FTransform{FRotator::ZeroRotator, FVector::ZeroVector});
-	// 				
-	// 				unitActor->Id = zaunit.Id;
-	// 				Game.unitIdToActor.Add(zaunit.Id, unitActor);
-	// 				
-	// 				unitActor->FinishSpawning(FTransform(TilePositionToWorldPoint(positionPlacement)));
-	// 			}
-	// 		}
-	// 	}
-	// }
 
 	const auto TapUpdateViewingModel = [this](auto next)
 	{
@@ -383,19 +300,24 @@ void ADungeonGameModeBase::BeginPlay()
 	};
 
 	TSubclassOf<ADungeonWorld> SubclassOf = ADungeonWorld::StaticClass();
+
 	auto world = FindAllActorsOfType(GetWorld(), SubclassOf);
 	world->currentWorldState.TurnState.teamId = 1;
 	world->currentWorldState.Config = {.ControllerTypeMapping = {Player, Computer}};
 	world->currentWorldState.InteractionContext.Set<FSelectingUnitContext>({});
-	
+	for (auto& IdToActor : world->currentWorldState.Map.LoadedUnits)
+	{
+		IdToActor.Value.HitPointsTotal = IdToActor.Value.HitPoints;
+	}
+
 	store = MakeUnique<FDungeonStore>(FDungeonStore(lager::make_store<TStoreAction>(
 		// FHistoryModel(Game)
 		FHistoryModel(world->currentWorldState)
-		,lager::with_manual_event_loop{}
-		,lager::with_deps(std::ref(*GetWorld()))
+		, lager::with_manual_event_loop{}
+		, lager::with_deps(std::ref(*GetWorld()))
 		// lager::with_queue_event_loop{QueueEventLoop},
-		,WithUndoReducer(WorldStateReducer)
-		,TapReducer([&](TDungeonAction action)
+		, WithUndoReducer(WorldStateReducer)
+		, TapReducer([&](TDungeonAction action)
 		{
 			this->DungeonActionDispatched.Broadcast(action);
 			// Visit([&]<typename T0>(T0 x)
@@ -410,20 +332,19 @@ void ADungeonGameModeBase::BeginPlay()
 			// }, action);
 		})
 		// ,TapUpdateViewingModel
-		,lager::with_futures
+		, lager::with_futures
 	)));
 
 	for (auto UnitIdToActor : static_cast<const FDungeonWorldState>(store->get()).unitIdToActor)
 	{
-		auto testDUDE = UnitIdToActor.Key;
-		UnitIdToActor.Value->HookIntoStore();
+		UnitIdToActor.Value->HookIntoStore(*store, this->DungeonActionDispatched);
 	}
 
 	interactionReader = store->zoom(interactionContextLens)
-	.map([](const TInteractionContext& Context)
-	{
-		return Context.GetIndex();
-	}).make();
+	                         .map([](const TInteractionContext& Context)
+	                         {
+		                         return Context.GetIndex();
+	                         }).make();
 	interactionReader.watch([this](SIZE_T typeIndex)
 	{
 		if (TInteractionContext(TInPlaceType<FControlledInteraction>{}).GetIndex() == typeIndex)
@@ -445,7 +366,30 @@ void ADungeonGameModeBase::BeginPlay()
 	style = FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText");
 	style.SetColorAndOpacity(FSlateColor(FLinearColor::White));
 
-	auto AttributeDisplay = [&](FString&& AttributeName, auto&& methodPointer) -> decltype(SVerticalBox::Slot())
+	auto unitPropertyToTextLambda = [&](auto&& getter)
+	{
+		return [this,getter]
+		{
+			FText valueToDisplay;
+			const TOptional<FDungeonLogicUnit>& unitUnderCursor = lager::view(getUnitUnderCursor, store->get());
+
+			if (!unitUnderCursor.IsSet())
+				return valueToDisplay;
+
+			if constexpr (TIsMemberPointer<typename TDecay<decltype(getter)>::Type>::Value)
+			{
+				valueToDisplay = FCoerceToFText::Value(unitUnderCursor.GetValue().*getter);
+			}
+			else
+			{
+				valueToDisplay = FCoerceToFText::Value(getter(unitUnderCursor.GetValue()));
+			}
+
+			return valueToDisplay;
+		};
+	};
+
+	auto AttributeDisplay = [&](FString&& AttributeName, auto&& lambda) -> decltype(SVerticalBox::Slot())
 	{
 		return MoveTemp(SVerticalBox::Slot().AutoHeight()[
 			SNew(SHorizontalBox)
@@ -461,50 +405,44 @@ void ADungeonGameModeBase::BeginPlay()
 				SNew(STextBlock)
            .TextStyle(&style)
            .Font(InAttribute)
-           .Text_Lambda(DUNGEON_FOWARD(methodPointer))
+           .Text_Lambda(DUNGEON_FOWARD(lambda))
 			]
 		]);
 	};
 
-	auto unitPropertyToText = [&](auto&& getter)
+	auto getTextReaderForLens = [this](auto&& lens)
 	{
-		return [this,getter = DUNGEON_FOWARD(getter)]
+		return store->zoom(lens).map([](auto&& unitUnderCursor) -> FText
 		{
-			const auto& unitUnderCursor = lager::view(getUnitUnderCursor, store->get());
-			return unitUnderCursor.IsSet() ? FCoerceToFText::Value(getter(unitUnderCursor.GetValue())) : FText();
-		};
+			if constexpr (TNot<TIsOptional<TDecay<decltype(unitUnderCursor)>::Type>>::Value)
+				return FCoerceToFText::Value(unitUnderCursor);
+			else
+			{
+				if (!unitUnderCursor.IsSet())
+					return {};
+
+				return FCoerceToFText::Value(*unitUnderCursor);
+			}
+		}).make();
 	};
 
 	MainWidget->UnitDisplay->SetContent(
 		SNew(SVerticalBox)
-		+ AttributeDisplay("Name", unitPropertyToText([](const FDungeonLogicUnit x) { return x.Name; }))
-		+ AttributeDisplay("HitPoints", unitPropertyToText([](const FDungeonLogicUnit x) { return x.HitPoints; }))
-		+ AttributeDisplay("Movement", unitPropertyToText([](const FDungeonLogicUnit x) { return x.Movement; }))
-		+ AttributeDisplay("Turn ID", [&] { return GetCurrentTurnId(); })
-		+ SVerticalBox::Slot().AutoHeight()[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			[
-				SNew(STextBlock)
-                     .TextStyle(&style)
-                     .Font(InAttribute)
-                     .Text(FText::FromString("Context Interaction"))
-			]
-			+ SHorizontalBox::Slot()
-			[
-				SNew(STextBlock)
-                     .TextStyle(&style)
-                     .Font(InAttribute)
-                     .Text_Lambda([&]() -> auto
-				                {
-					                return Visit([&](auto&& context)
-					                {
-						                return FText::FromString(
-							                (TDecay<decltype(context)>::Type::StaticStruct()->GetName()));
-					                }, UseViewState(interactionContextLens));
-				                })
-			]
-		]
+		+ AttributeDisplay(
+			"Name", getTextReaderForLens(getUnitUnderCursor | unreal_map_opt(attr(&FDungeonLogicUnit::Name))))
+		+ AttributeDisplay("HitPoints", unitPropertyToTextLambda(&FDungeonLogicUnit::HitPoints))
+		+ AttributeDisplay("Movement", unitPropertyToTextLambda(&FDungeonLogicUnit::Movement))
+		+ AttributeDisplay("Turn ID", getTextReaderForLens(
+			                   SimpleCastTo<FDungeonWorldState> | attr(&FDungeonWorldState::TurnState) | attr(
+				                   &FTurnState::teamId)))
+		+ AttributeDisplay("Context Interaction", [&]() -> auto
+		{
+			return Visit([&](auto&& context)
+			{
+				return FText::FromString(
+					TDecay<decltype(context)>::Type::StaticStruct()->GetName());
+			}, UseViewState(interactionContextLens));
+		})
 	);
 
 	this->SingleSubmitHandler = static_cast<USingleSubmitHandler*>(this->AddComponentByClass(
@@ -514,16 +452,9 @@ void ADungeonGameModeBase::BeginPlay()
 void ADungeonGameModeBase::Tick(float deltaTime)
 {
 	Super::Tick(deltaTime);
-
-	// QueueEventLoop.step();
 }
 
 lager::future ADungeonGameModeBase::Dispatch(TDungeonAction&& unionAction)
 {
 	return store->dispatch(MoveTemp(unionAction));
-}
-
-FText ADungeonGameModeBase::GetCurrentTurnId() const
-{
-	return FCoerceToFText::Value(lager::view(turnStateLens, *this).teamId);
 }

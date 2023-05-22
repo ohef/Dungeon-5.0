@@ -67,7 +67,7 @@ const auto getUnitAtPointLens = [](const FIntPoint& pt)
 
 const auto cursorPositionLens = attr(&FDungeonWorldState::CursorPosition);
 
-const auto unitIdToPosition = [](int unitId)
+const auto unitIdToPositionOpt = [](int unitId)
 {
 	using unitAssign_t = GET_TYPE_OF(&FDungeonLogicMap::UnitAssignment);
 	using ReturnType = unitAssign_t::KeyType;
@@ -78,15 +78,10 @@ const auto unitIdToPosition = [](int unitId)
 		| lager::lenses::getset(
 			[unitId](unitAssign_t&& map)
 			{
-				// try
-				// {
-					return *map.FindKey(unitId);
-				// }
-				// catch (...)
-				// {
-				// 	UE_DEBUG_BREAK();
-				// 	return FIntPoint();
-				// }
+				if (auto found = map.FindKey(unitId))
+					return TOptional<FIntPoint>(*found);
+				else
+					return TOptional<FIntPoint>();
 			},
 			[](unitAssign_t&& map, unitAssign_t::KeyType&& positionToSet)
 			{
@@ -94,10 +89,18 @@ const auto unitIdToPosition = [](int unitId)
 			});
 };
 
+const auto composeLens = [](auto&& thisLens)
+{
+	return zug::comp([thisLens](auto&& otherLens) { return otherLens | thisLens; });
+};
+
+const auto unitIdToPosition = composeLens(ignoreOptional) | unitIdToPositionOpt;
+
 const auto unitIdToActor = [](int unitId)
 {
 	return attr(&FDungeonWorldState::unitIdToActor)
-		| Find(unitId);
+		| Find(unitId) 
+		| ignoreOptional ;
 };
 
 const auto unitDataLens = [](int id)

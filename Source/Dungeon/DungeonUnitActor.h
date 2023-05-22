@@ -13,6 +13,7 @@
 #include "Widget/DamageWidget.h"
 #include "Widget/HealthBarWidget.h"
 #include "Components/WidgetComponent.h"
+#include "Templates/NonNullPointer.h"
 #include "DungeonUnitActor.generated.h"
 
 UCLASS()
@@ -23,6 +24,7 @@ class DUNGEON_API ADungeonUnitActor : public AActor, public FStoreConnectedClass
 public:
 	// Sets default values for this actor's properties
 	ADungeonUnitActor();
+	void CreateDynamicMaterials();
 
 protected:
 	// Called when the game starts or when spawned
@@ -30,11 +32,10 @@ protected:
 
 public:
 	FIntPoint lastPosition;
-	using FReaderType = std::tuple<FDungeonLogicUnit, FIntPoint, TOptional<int>>;
+	using FReaderType = std::tuple<TOptional<FDungeonLogicUnit>, TOptional<FIntPoint>, TOptional<int>>;
 	lager::reader<FReaderType> reader;
-	lager::reader<TTuple<FIntPoint, FIntPoint>> wew;
 
-	void HookIntoStore();
+	void HookIntoStore(const FDungeonStore& store, TDungeonActionDispatched& eventToUse);
 	void HandleGlobalEvent(const TDungeonAction& action);
 
 	UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")
@@ -42,6 +43,9 @@ public:
 
 	UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")
 	void ReactCombatAction(FCombatAction updatedState);
+	
+	UFUNCTION()
+	void ClearDamageTimer();
 	
 	UPROPERTY(EditAnywhere)
 	int Id;
@@ -64,9 +68,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	UWidgetComponent* HealthBarComponent;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UWidgetComponent* DamageWidgetComponent;
 
-	UPROPERTY(Transient)
-	UDamageWidget* DamageWidget;
 	UPROPERTY(Transient)
 	TSubclassOf<UHealthBarWidget> HealthBarWidgetClass;
 	UPROPERTY(Transient)
@@ -81,7 +85,11 @@ public:
 	UMaterialInstance* UnitIndicatorMaterial;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	UAnimMontage* CombatActionMontage;
+	UAnimSequenceBase* CombatActionAnimationSubmit;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UAnimSequenceBase* CombatActionAnimationWindUp;
+
+	FTimerHandle timerHandle;
 
 	virtual
 	void Tick(float DeltaTime) override;

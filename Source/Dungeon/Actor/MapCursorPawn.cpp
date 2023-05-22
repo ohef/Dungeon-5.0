@@ -57,16 +57,17 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
 	currentZoomPointer = 2;
 }
 
+const auto IsInAbilityContext = interactionContextLens
+	| unreal_alternative_pipeline<FSelectingUnitAbilityTarget>
+	| map_opt(attr(&FSelectingUnitAbilityTarget::abilityId));
+
 void AMapCursorPawn::BeginPlay()
 {
 	Super::BeginPlay();
 
 	auto handleInteractionContextUpdated = [&](const FChangeState& = {})
 	{
-		auto maybeTargeting = UseViewState(
-			interactionContextLens
-			| unreal_alternative_pipeline<FSelectingUnitAbilityTarget>
-			| map_opt(attr(&FSelectingUnitAbilityTarget::abilityId)));
+		auto maybeTargeting = UseViewState(IsInAbilityContext);
 		if (maybeTargeting.has_value() && *maybeTargeting == EAbilityId::IdAttack)
 		{
 			auto interactionPosition =
@@ -81,22 +82,6 @@ void AMapCursorPawn::BeginPlay()
 		}
 	};
 
-	auto MoveToHeadOnPositionUpdate = [this](const FCursorPositionUpdated& newPos)
-	{
-		auto possibleUnit = UseViewState(getUnitAtPointLens(newPos.cursorPosition));
-		if (possibleUnit)
-		{
-			auto cursorPosition = UseViewState(unitIdToActor(*possibleUnit) | ignoreOptional)
-			                      ->FindComponentByClass<USkeletalMeshComponent>()
-			                      ->GetSocketTransform("head", RTS_Actor);
-			SpringArmComponent->SetRelativeLocation(cursorPosition.GetLocation() * FVector::UpVector);
-		}
-		else
-		{
-			SpringArmComponent->SetRelativeLocation(FVector::Zero());
-		}
-	};
-	
 	UseEvent().AddLambda(Dungeon::MatchEffect(
 		[&, handleInteractionContextUpdated](const FBackAction&)
 		{
@@ -104,26 +89,12 @@ void AMapCursorPawn::BeginPlay()
 			if(CurrentPosition != UseViewState(cursorPositionLens))
 				RootComponent->SetWorldLocation(TilePositionToWorldPoint(UseViewState(cursorPositionLens)));
 		},
-		// MoveToHeadOnPositionUpdate,
 		handleInteractionContextUpdated
 	));
 
 	auto beginningLocation = SpringArmComponent->GetRelativeLocation();
-	auto catchAllInteractionContext = [&, beginningLocation](const auto& context) mutable 
+	auto respondToAllInteractionContextSwitches = [&, beginningLocation](const auto& context) mutable 
 				{
-					auto actorMap = UseViewState(attr(&FDungeonWorldState::unitIdToActor));
-					using TComp = USkeletalMeshComponent;
-					TArray<TComp*> comps;
-					for (TTuple<int, TWeakObjectPtr<ADungeonUnitActor>> tuple : actorMap)
-					{
-						tuple.Value->GetComponents(comps);
-						for (auto c : comps)
-						{
-							c->SetVisibleFlag(true);
-							c->MarkRenderStateDirty();
-						}
-					}
-		
 					auto CurrentRotation = SpringArmComponent->GetRelativeRotation().Euler();
 					CurrentRotation[1] = -45;
 					SpringArmComponent->SetRelativeRotation(FRotator::MakeFromEuler(CurrentRotation));
@@ -140,33 +111,17 @@ void AMapCursorPawn::BeginPlay()
 					}
 				};
 
-	reader = UseStoreNode().make();
-	reader.bind(zug::comp(Dungeon::Match(MoveTemp(catchAllInteractionContext))
+	reader = UseStoreNode();
+	reader.bind(zug::comp(Dungeon::Match(MoveTemp(respondToAllInteractionContextSwitches))
 			(
 				[this](const FUnitInteraction& interaction) mutable
 				{
-					auto actorMap = UseViewState(attr(&FDungeonWorldState::unitIdToActor));
-					actorMap.Remove(interaction.originatorID);
-					actorMap.Remove(interaction.targetIDUnderFocus);
-
-					using TComp = USkeletalMeshComponent;
-					TArray<TComp*> comps;
-					for (TTuple<int, TWeakObjectPtr<ADungeonUnitActor>> tuple : actorMap)
-					{
-						tuple.Value->GetComponents(comps);
-						for (auto c : comps)
-						{
-							c->SetVisibleFlag(false);
-							c->MarkRenderStateDirty();
-						}
-					}
-					
 					MovementComponent->SetActive(false);
 					auto SkeletalMeshComponentTarget =
-						UseViewState(unitIdToActor(interaction.targetIDUnderFocus) | ignoreOptional)
+						UseViewState(unitIdToActor(interaction.targetIDUnderFocus))
 						->FindComponentByClass<USkeletalMeshComponent>();
 					auto SkeletalMeshComponentInitiator =
-						UseViewState(unitIdToActor(interaction.originatorID) | ignoreOptional)
+						UseViewState(unitIdToActor(interaction.originatorID))
 						->FindComponentByClass<USkeletalMeshComponent>();
 
 					auto headPositionTarget = SkeletalMeshComponentTarget
@@ -198,8 +153,7 @@ void AMapCursorPawn::BeginPlay()
 					SpringArmComponent->SetWorldRotation(FRotator::MakeFromEuler(
 						FVector(0, 0, 1) * rotator.Euler()
 						+ FVector(1, 1, 0) * SpringArmComponent->GetRelativeRotation().Euler()));
-				}))
-		| [](auto&& model) { return DUNGEON_FOWARD(model).InteractionContext; });
+				}), [](auto&& model) { return DUNGEON_FOWARD(model).InteractionContext; }));
 }
 
 void AMapCursorPawn::Tick(float DeltaTime)
@@ -258,13 +212,10 @@ void AMapCursorPawn::Query()
 	StoreDispatch(TDungeonAction(TInPlaceType<FCursorQueryTarget>{}, CurrentPosition));
 }
 
-const auto GetContextLens = interactionContextLens | unreal_alternative_pipeline<FSelectingUnitAbilityTarget> | map_opt(
-	attr(&FSelectingUnitAbilityTarget::abilityId));
-
 //TODO this is horrible
 void AMapCursorPawn::MoveRight(float Value)
 {
-	auto context = UseViewState(GetContextLens);
+	auto context = UseViewState(IsInAbilityContext);
 	if (!(context.has_value() && context.value() == EAbilityId::IdAttack))
 	{
 		AddMovementInput(ConvertInputToCameraPlaneInput(FVector{Value, 0.0, 0.0}));
@@ -273,7 +224,7 @@ void AMapCursorPawn::MoveRight(float Value)
 
 void AMapCursorPawn::MoveUp(float Value)
 {
-	auto context = UseViewState(GetContextLens);
+	auto context = UseViewState(IsInAbilityContext);
 	if (!(context.has_value() && context.value() == EAbilityId::IdAttack))
 	{
 		AddMovementInput(ConvertInputToCameraPlaneInput(FVector{0.0, Value, 0.0}));
@@ -282,7 +233,7 @@ void AMapCursorPawn::MoveUp(float Value)
 
 void AMapCursorPawn::CycleSelect(TNumberMutator* indexMover)
 {
-	auto context = UseViewState(GetContextLens);
+	auto context = UseViewState(IsInAbilityContext);
 	if (context.has_value() && context.value() == EAbilityId::IdAttack)
 	{
 		currentCyclerIndex = CycleArrayIndex(indexMover, cycler.iteratee.Num(), currentCyclerIndex);
@@ -309,8 +260,7 @@ void AMapCursorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	{
 		auto& bindNext = PlayerInputComponent->BindAction("Next", EInputEvent::IE_Pressed, this, &AMapCursorPawn::Next);
 		bindNext.bConsumeInput = false;
-		auto& bindPrevious = PlayerInputComponent->BindAction("Previous", EInputEvent::IE_Pressed, this,
-		                                                      &AMapCursorPawn::Previous);
+		auto& bindPrevious = PlayerInputComponent->BindAction("Previous", EInputEvent::IE_Pressed, this, &AMapCursorPawn::Previous);
 		bindPrevious.bConsumeInput = false;
 
 		return [&]

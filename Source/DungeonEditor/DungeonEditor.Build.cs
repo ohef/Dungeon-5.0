@@ -23,6 +23,7 @@ public class DungeonEditor : ModuleRules
         "JsonUtilities",
         "Slate",
         "SlateCore", 
+        "InputCore",
         "EditorScriptingUtilities",
         "EditorFramework", "Blutility",
         }

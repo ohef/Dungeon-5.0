@@ -27,3 +27,9 @@ struct FMoveAction
 	{
 	}
 };
+
+USTRUCT()
+struct FMoveActionCommit : public FMoveAction
+{
+	GENERATED_BODY()
+};
