@@ -25,3 +25,13 @@ probably see it.
 You should be able to use it as a standalone game module; but there's a lot of
 setup one has to go through to get it working; honestly just don't do it, there
 are references that are hardcoded against assets and whatnot. 
+
+# Status
+Honestly an SRPG is quite an undertaking; that and I'm not really convinced that
+I'm up to the task in designing it (ugh life is annoying you know?). For now, if
+there's one thing; is that lager is quite an amazing library that you can
+totally use for an unreal project. If only we had a React rendering library it'd
+make the whole web paradigm work; but who wants to do that for C++.
+
+It works, you need some content; I may update that, in the meantime I'll
+just leave this here if you're interested into what I'm up to.
