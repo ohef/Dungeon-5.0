@@ -54,8 +54,8 @@ void USingleSubmitHandler::Begin(
 
   // TODO: allow for updating this?
   totalLength = 1.0;
-  pivot = 0.5;
-  fallOffsFromPivot = {0.1f, .2f, .3f};
+  pivot = 0.3;
+  fallOffsFromPivot = {0.05f};
   
   int orderi = 1;
   handlers.Empty();
@@ -80,7 +80,7 @@ void USingleSubmitHandler::DoSubmit()
   TOptional<FIntervalPriority> found;
   for (int i = 0; i < handlers.Num(); i++)
   {
-    found = handlers[i].Contains(timeline.GetPlaybackPosition()) ? TOptional(handlers[i]) : found;
+    found = handlers[i].interval.Contains(timeline.GetPlaybackPosition()) ? TOptional(handlers[i]) : found;
   }
 
   if (found.IsSet())
@@ -100,7 +100,7 @@ void USingleSubmitHandler::TickOuterCircle(float DeltaTime)
   auto output =
     Algo::Accumulate(handlers, FString{}, [](FString acc, decltype(handlers)::ElementType val)
     {
-      return acc.Append(FString::Format(TEXT("Min {0}, Max {1}, Priority {2}\n"), {val.Min, val.Max, val.order}));
+      return acc.Append(FString::Format(TEXT("Min {0}, Max {1}, Priority {2}\n"), {val.interval.Min, val.interval.Max, val.order}));
     });
 
   APlayerController* InPlayerController = this->GetWorld()->GetFirstPlayerController();

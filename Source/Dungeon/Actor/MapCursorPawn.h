@@ -10,11 +10,12 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/InterpToMovementComponent.h"
 #include "Dungeon/Dungeon.h"
-#include "GameFramework/FloatingPawnMovement.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GameFramework/FloatingPawnMovement.h"
 #include "lager/reader.hpp"
 #include "Logic/DungeonGameState.h"
 #include "Utility/StoreConnectedClass.hpp"
+
 #include "MapCursorPawn.generated.h"
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCursorEvent, FIntPoint);
@@ -153,7 +154,7 @@ public:
   UCapsuleComponent* CursorCollider;
 
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
-  UFloatingPawnMovement* MovementComponent ;
+  UFloatingPawnMovement* MovementComponent;
   
   UPROPERTY(EditAnywhere, BlueprintReadWrite)
   UInterpToMovementComponent* InterpToMovementComponent ;

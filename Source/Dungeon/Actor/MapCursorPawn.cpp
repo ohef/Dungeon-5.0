@@ -11,6 +11,7 @@
 #include "Dungeon/DungeonGameModeBase.h"
 #include "Dungeon/Lenses/model.hpp"
 #include "GameFramework/SpringArmComponent.h"
+#include "lager/lenses/tuple.hpp"
 #include "Logic/StateQueries.hpp"
 #include "zug/transducer/cycle.hpp"
 
@@ -45,7 +46,7 @@ AMapCursorPawn::AMapCursorPawn(const FObjectInitializer& ObjectInitializer) : Su
 	Camera->bAutoActivate = true;
 
 	FrustumComponent = CreateDefaultSubobject<UDrawFrustumComponent>(TEXT("UDrawFrustumComponent"));
-	MovementComponent = CreateDefaultSubobject<UFloatingPawnMovement>(TEXT("UFloatingPawnMovement"));
+	MovementComponent = CreateDefaultSubobject<TRemovePointer<decltype(MovementComponent)>::Type>(TEXT("UFloatingPawnMovement"));
 	MovementComponent->Acceleration = 16000;
 	MovementComponent->Deceleration = 16000;
 
@@ -72,9 +73,7 @@ void AMapCursorPawn::BeginPlay()
 		{
 			auto interactionPosition =
 				UseViewState(unitIdToPosition(
-					UseViewState(
-						attr(&FDungeonWorldState::WaitingForResolution) | unreal_alternative<FCombatAction> |
-						ignoreOptional).InitiatorId));
+					UseViewState(attr(&FDungeonWorldState::WaitingForResolution) | unreal_alternative<FCombatAction> | ignoreOptional).InitiatorId));
 
 			TSet<FIntPoint> IntPoints = GetInteractablePositions(reader.get(), interactionPosition);
 			cycler = TCycleArrayIterator(zug::unreal::into(TArray<FIntPoint>{}, zug::identity, IntPoints));
@@ -117,19 +116,27 @@ void AMapCursorPawn::BeginPlay()
 				[this](const FUnitInteraction& interaction) mutable
 				{
 					MovementComponent->SetActive(false);
-					auto SkeletalMeshComponentTarget =
-						UseViewState(unitIdToActor(interaction.targetIDUnderFocus))
-						->FindComponentByClass<USkeletalMeshComponent>();
-					auto SkeletalMeshComponentInitiator =
-						UseViewState(unitIdToActor(interaction.originatorID))
-						->FindComponentByClass<USkeletalMeshComponent>();
 
-					auto headPositionTarget = SkeletalMeshComponentTarget
-					->GetSocketTransform("head", RTS_World)
-					.GetLocation();
-					auto headPositionInitiator = SkeletalMeshComponentInitiator->GetSocketTransform("head", RTS_World).
-						GetLocation();
+					auto [originatorActor, targetActor] =
+					UseViewState(fan(
+						unitIdToActor(interaction.originatorID),
+						unitIdToActor(interaction.targetIDUnderFocus)));
 
+					auto SkeletalMeshComponentInitiator = originatorActor->FindComponentByClass<USkeletalMeshComponent>();
+					auto SkeletalMeshComponentTarget = targetActor->FindComponentByClass<USkeletalMeshComponent>();
+
+					// auto headPositionTarget = SkeletalMeshComponentTarget
+					//                           ->GetSocketTransform("head", RTS_World)
+					//                           .GetLocation();
+					auto headPositionTarget = targetActor->GetActorLocation();
+					auto headPositionInitiator = SkeletalMeshComponentInitiator
+					                             ->GetSocketTransform("head", RTS_World)
+					                             .GetLocation();
+
+					headPositionTarget.Z = headPositionInitiator.Z;
+					headPositionInitiator.X = originatorActor->GetActorLocation().X;
+					headPositionInitiator.Y = originatorActor->GetActorLocation().Y;
+					
 					//TODO: Revisit this math...
 					SpringArmComponent->SetWorldLocation(
 						FVector(1, 1, 0) * ((headPositionTarget + headPositionInitiator) / 2.0)
@@ -138,6 +145,7 @@ void AMapCursorPawn::BeginPlay()
 					auto initiatorFacingDirection = FVector::DownVector.Cross(headDirection);
 					auto project = (headPositionInitiator - Camera->GetComponentLocation() * FVector(1,1,0))
 						.ProjectOnTo(initiatorFacingDirection);
+					
 					FRotator rotator;
 					if (project.Dot(initiatorFacingDirection) >= 0)
 					{

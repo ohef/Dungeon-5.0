@@ -166,11 +166,6 @@ const auto identity = []
 
 const auto GetConfig = lager::lenses::attr(&FDungeonWorldState::Config);
 
-inline int GetNumberOfPlayers(const FDungeonWorldState& Model)
-{
-	return lager::view(GetConfig | attr(&FConfig::ControllerTypeMapping), Model).Num();
-}
-
 inline TInteractionContext GetStartingContextForControllerType(EPlayerType Controller)
 {
 	switch (Controller)
@@ -297,14 +292,9 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 				  },
 				  [&](FCombatAction& waitingAction) -> FDungeonReducerResult
 				  {
-					  TOptional<FDungeonLogicUnit> initiatingUnit =
-						  ReducerView(
-							  unitDataLens(waitingAction.InitiatorId));
-					  int targetedUnitId = ReducerView(
-						  getUnitAtPointLens(actionTarget.target) |
-						  unreal_value_or(-1));
-					  TOptional<FDungeonLogicUnit> targetedUnit =
-						  ReducerView(unitDataLens(targetedUnitId));
+					  TOptional<FDungeonLogicUnit> initiatingUnit = ReducerView(unitDataLens(waitingAction.InitiatorId));
+					  int targetedUnitId = ReducerView(getUnitAtPointLens(actionTarget.target) | unreal_value_or(-1));
+					  TOptional<FDungeonLogicUnit> targetedUnit = ReducerView(unitDataLens(targetedUnitId));
 
 					  auto [movementTiles, attackTiles] =
 						  GetInteractionFields(
@@ -314,8 +304,7 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					                               Contains(actionTarget.target);
 					  bool isUnitThere = targetedUnit.IsSet();
 					  bool isTargetNotOnTheSameTeam = targetedUnit.IsSet()
-						  && targetedUnit->teamId != initiatingUnit->
-						  teamId;
+						  && targetedUnit->teamId != initiatingUnit->teamId;
 					  if (isInRange && isUnitThere &&
 						  isTargetNotOnTheSameTeam)
 					  {
@@ -434,12 +423,12 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 		},
 		[&](FEndTurnAction& action) -> FDungeonReducerResult
 		{
-			const int MAX_PLAYERS = GetNumberOfPlayers(Model);
+			const auto& ControllerTypeMapping = lager::view(GetConfig | attr(&FConfig::ControllerTypeMapping), Model);
+			const int MAX_PLAYERS = ControllerTypeMapping.Num();
 			const auto nextTeamId = (Model.TurnState.teamId % MAX_PLAYERS) + 1;
 
 			Model.TurnState = {nextTeamId};
-			const auto& Controllers = ReducerView(GetConfig | attr(&FConfig::ControllerTypeMapping));
-			const auto& ControllerType = Controllers[nextTeamId - 1];
+			const auto& ControllerType = ControllerTypeMapping[nextTeamId - 1];
 			Model.InteractionContext = GetStartingContextForControllerType(ControllerType);
 			return Model;
 		},
@@ -515,9 +504,9 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					                                          &UPromiseFulfiller::HandleOnInterpToStop)
 					([springArm, actorPtr, oldParent]
 					{
-						UKismetSystemLibrary::PrintString(actorPtr.Get(),
-						                                  FString::Format(
-							                                  TEXT("ON HANDLE INTERP TO STOP CALLED"), {1}));
+						// UKismetSystemLibrary::PrintString(actorPtr.Get(),
+						//                                   FString::Format(
+						// 	                                  TEXT("ON HANDLE INTERP TO STOP CALLED"), {1}));
 
 						springArm->AttachToComponent(
 							oldParent, FAttachmentTransformRules(EAttachmentRule::KeepRelative, false));
@@ -526,16 +515,6 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					return MoveTemp(fut);
 				}
 			};
-		},
-		[&](FKillUnitAction& action) -> FDungeonReducerResult
-		{
-			auto actor = Model.unitIdToActor.FindAndRemoveChecked(action.unitID);
-			actor->Destroy();
-			Model.Map.LoadedUnits.Remove(action.unitID);
-			auto foundID = *Model.Map.UnitAssignment.FindKey(action.unitID);
-			Model.Map.UnitAssignment.Remove(foundID);
-
-			return Model;
 		},
 		[&](FCombatAction& action) -> FDungeonReducerResult
 		{
@@ -578,13 +557,13 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					
 					UAnimMontage* Montage = AnimInstance->PlaySlotAnimationAsDynamicMontage(
 						initatorActor->CombatActionAnimationSubmit,
-						"UpperBody", .25, .25, .5);
+						"UpperBody", .25, .25, 1.f);
 
 					auto [promise, fut] = lager::promise::with_loop(ctx.loop());
 
 					//TODO: hmm this seems to be for a montage ending but not the blending out HMM
 					AnimInstance->QueueMontageEndedEvent(FQueuedMontageEndedEvent(Montage, false,
-						FOnMontageEnded::CreateLambda([ctx, maybeKill, promise = MoveTemp(promise)](...) mutable
+						FOnMontageEnded::CreateLambda([ctx, maybeKill, promise](...) mutable
 						{
 							if (maybeKill)
 							{
@@ -611,6 +590,16 @@ inline auto WorldStateReducer(FDungeonWorldState Model, TDungeonAction worldActi
 					ctx.dispatch(TDungeonAction(TInPlaceType<FCommitAction>{}));
 				}
 			};
+		},
+		[&](FKillUnitAction& action) -> FDungeonReducerResult
+		{
+			auto actor = Model.unitIdToActor.FindAndRemoveChecked(action.unitID);
+			actor->Destroy();
+			Model.Map.LoadedUnits.Remove(action.unitID);
+			auto foundID = *Model.Map.UnitAssignment.FindKey(action.unitID);
+			Model.Map.UnitAssignment.Remove(foundID);
+
+			return Model;
 		},
 		[&](FFocusChanged& action) -> FDungeonReducerResult
 		{

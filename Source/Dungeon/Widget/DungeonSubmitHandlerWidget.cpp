@@ -10,10 +10,10 @@
 
 UDungeonSubmitHandlerWidget::UDungeonSubmitHandlerWidget(const FObjectInitializer& Initializer) : Super(Initializer)
 {
-  static ConstructorHelpers::FObjectFinder<UMaterialInterface> NewMaterial6(
-    TEXT("Material'/Game/Blueprints/NewMaterial6.NewMaterial6'"));
+  static ConstructorHelpers::FObjectFinder<UMaterialInterface> TimingCircleMaterial(
+    TEXT("Material'/Game/Blueprints/TimingCircle.TimingCircle'"));
 
-  CircleMaterial = NewMaterial6.Object;
+  CircleMaterial = TimingCircleMaterial.Object;
 }
 
 void UDungeonSubmitHandlerWidget::RenderProperties(TArray<FIntervalPriority> IntervalPrioritiess, float TimelineLengthh,
@@ -29,6 +29,7 @@ void UDungeonSubmitHandlerWidget::RenderProperties(TArray<FIntervalPriority> Int
   {
     AddedCircle->RemoveFromParent();
   }
+  
   addedCircles.Empty();
   
   for (auto interval : IntervalPriorities)
@@ -41,11 +42,12 @@ void UDungeonSubmitHandlerWidget::RenderProperties(TArray<FIntervalPriority> Int
     PanelSlot->SetPosition({0, 0});
     PanelSlot->SetAlignment({0.5, 0.5});
     auto dynamicMaterial = UKismetMaterialLibrary::CreateDynamicMaterialInstance(this, CircleMaterial);
-    double innerRadius = 1.0 - (interval.Min / TimelineLength);
+    double innerRadius = 1.0 - (interval.interval.Min / TimelineLength);
     dynamicMaterial->SetScalarParameterValue(FName(TEXT("InnerRadius")), innerRadius * .5);
-    double outerRadius = (1.0 - interval.Max / TimelineLength);
+    double outerRadius = (1.0 - interval.interval.Max / TimelineLength);
     dynamicMaterial->SetScalarParameterValue(FName(TEXT("OuterRadius")), outerRadius * .5);
-    dynamicMaterial->SetScalarParameterValue(FName(TEXT("Opacity")), .25f);
+    dynamicMaterial->SetScalarParameterValue(FName(TEXT("Opacity")), 1.f);
+    // dynamicMaterial->SetVectorParameterValue(FName(TEXT("Color")), FLinearColor::Black );
     circleWidget->SetBrushFromMaterial(dynamicMaterial);
   }
 
@@ -78,7 +80,10 @@ void UDungeonSubmitHandlerWidget::NativeTick(const FGeometry& MyGeometry, float 
 void UDungeonSubmitHandlerWidget::NativeOnInitialized()
 {
   Super::NativeOnInitialized();
+  
   FWidgetAnimationDynamicEvent delegate = FWidgetAnimationDynamicEvent();
   delegate.BindDynamic(this, &UDungeonSubmitHandlerWidget::Stop);
   this->BindToAnimationFinished(OuterDissappear, delegate);
+  
+  Cast<UCanvasPanelSlot>(OuterCircle->Slot)->SetZOrder(2);
 }

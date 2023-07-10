@@ -1,14 +1,13 @@
 ﻿#pragma once
 
-struct FIntervalPriority : public FFloatInterval
+struct FIntervalPriority 
 {
   int8 order;
   float hitTime;
-
-  using FFloatInterval::FFloatInterval;
+  FFloatInterval interval;
 
   FIntervalPriority(float InMin, float InMax, int8 order)
-    : FFloatInterval(InMin, InMax), order(order)
+    : order(order), hitTime(-1), interval(InMin, InMax)
   {
   }
 };

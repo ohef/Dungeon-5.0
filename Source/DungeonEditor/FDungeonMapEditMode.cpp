@@ -18,6 +18,7 @@
 #include "IStructureDetailsView.h"
 #include "Algo/Accumulate.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "lager/lenses/tuple.hpp"
 #include "Lenses/model.hpp"
 #include "Misc/AssertionMacros.h"
 #include "Toolkits/ToolkitManager.h"
@@ -73,6 +74,9 @@ public:
 	TSharedPtr<SHeaderRow> ThisHeader;
 	TWeakObjectPtr<ADungeonWorld> WorldPtr;
 
+	using TWidthHeight = lager::reader<std::tuple<int, int>>;
+	TWidthHeight widthHeight;
+
 	void Init(const TSharedPtr<IToolkitHost>& InitToolkitHost, ADungeonWorld* World)
 	{
 		WorldPtr = World;
@@ -81,7 +85,15 @@ public:
 
 		BlankStateEditing = MakeShared<TStructOnScope<FDungeonWorldEditorState>>();
 		BlankStateEditing->InitializeAs<FDungeonWorldEditorState>();
+		BlankStateEditing->Get()->WorldState = WorldPtr->currentWorldState;
 
+		auto widthHeightLens =
+			SimpleCastTo<FDungeonWorldState>
+			| attr(&FDungeonWorldState::Map)
+			| fan(attr(&FDungeonLogicMap::Width), attr(&FDungeonLogicMap::Height));
+
+		widthHeight = WorldPtr->WorldState->zoom(widthHeightLens).make();
+		
 		FDetailsViewArgs Params2;
 		FStructureDetailsViewArgs ViewArgs;
 		PropertyEditor = PropertyEditorModule.CreateStructureDetailView(Params2, ViewArgs, BlankStateEditing);
@@ -99,15 +111,16 @@ public:
 				{
 					auto Property = CastField<FObjectProperty>(event.Property);
 					auto anotherOne = BlankStateEditing->Get();
-					auto rando = Property->GetObjectPropertyValue(anotherOne);
-					auto wew = Cast<UDataTable>(rando);
+					Property->GetPropertyValue(anotherOne);
 
-					TArray<FDungeonLogicUnitRow*> out;
-					anotherOne->Table->GetAllRows("", out);
-
-					UnitEntries.Empty();
-					Algo::Transform(out, UnitEntries, [](auto x) { return MakeShared<FDungeonLogicUnitRow>(*x); });
-					ListView->RebuildList();
+					if (auto rando = Property->GetObjectPropertyValue(anotherOne))
+					{
+						TArray<FDungeonLogicUnitRow*> out;
+						anotherOne->Table->GetAllRows("", out);
+						UnitEntries.Empty();
+						Algo::Transform(out, UnitEntries, [](auto x) { return MakeShared<FDungeonLogicUnitRow>(*x); });
+						ListView->RebuildList();
+					}
 					// UE_DEBUG_BREAK();
 				}
 
@@ -169,7 +182,6 @@ public:
 	virtual FDungeonMapEditMode* GetEditorMode() const override;
 
 private:
-	
 	TSharedPtr<SVerticalBox> SVerticalBoxEditor;
 };
 
@@ -188,10 +200,17 @@ void FDungeonMapEditMode::Initialize()
 	FEdMode::Initialize();
 }
 
+static inline int unitId = 1;
+
 void FDungeonMapEditMode::Enter()
 {
 	TSubclassOf<ADungeonWorld> filterClass = ADungeonWorld::StaticClass();
 	DungeonWorld = FindAllActorsOfType(GetWorld(), filterClass);
+
+	for (TTuple<int, FDungeonLogicUnit> LoadedUnit : DungeonWorld->currentWorldState.Map.LoadedUnits)
+	{
+		unitId = FGenericPlatformMath::Max(unitId, LoadedUnit.Key);
+	}
 
 	FDataTableEditorModule& DataTableEditorModule = FModuleManager::LoadModuleChecked<FDataTableEditorModule>(
 		"DataTableEditor");
@@ -199,17 +218,6 @@ void FDungeonMapEditMode::Enter()
 	EditorModeToolkit = MakeShareable(new FDungeonMapEditorToolkit);
 	Toolkit = EditorModeToolkit;
 	EditorModeToolkit->Init(Owner->GetToolkitHost(), DungeonWorld.Get());
-
-	// UDataTable* UnitTable = NewObject<UDataTable>();
-	// UnitTable->RowStruct = FDungeonLogicUnit::StaticStruct();
-	// auto TheEditorThing = DataTableEditorModule
-	// 	.CreateDataTableEditor(EToolkitMode::Type::Standalone, Owner->GetToolkitHost(), UnitTable);
-	// TheEditorThing->GetEditingObject();
-
-	for (TActorIterator<ADungeonUnitActor> Iter(GetWorld(), ADungeonUnitActor::StaticClass()); Iter; ++Iter)
-	{
-		Iter->Destroy();
-	}
 
 	// Get a reference to the AssetRegistry module.
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<
@@ -243,18 +251,16 @@ void FDungeonMapEditMode::Exit()
 	FEdMode::Exit();
 }
 
-static inline int unitId = 1;
-
 bool FDungeonMapEditMode::HandleClick(FEditorViewportClient* InViewportClient, HHitProxy* HitProxy,
                                       const FViewportClick& Click)
 {
 	auto CursorPosition = DungeonWorld->WorldState->zoom(
 		SimpleCastTo<FDungeonWorldState> |
 		lager::lenses::attr(&FDungeonWorldState::CursorPosition)).make().get();
-	
+
 	auto unit = EditorModeToolkit->BlankStateEditing->Get()->CurrentUnit;
 	unit.unitData.Id = ++unitId;
-	
+
 	DungeonWorld->WorldState->dispatch(CreateDungeonAction(FSpawnUnit{
 		.Position = CursorPosition,
 		.Unit = unit.unitData,
@@ -268,7 +274,7 @@ bool FDungeonMapEditMode::HandleClick(FEditorViewportClient* InViewportClient, H
 	justAddedThis->HookIntoStore(*DungeonWorld->WorldState, wew);
 
 	// auto didChange = EditorModeToolkit->BlankStateEditing->Get()->Table;
-	
+
 	return true;
 }
 
@@ -325,7 +331,7 @@ bool FDungeonMapEditMode::CapturedMouseMove(FEditorViewportClient* InViewportCli
 		{
 			return false;
 		}
-		
+
 		auto PrimComponent = MakeWeakObjectPtr(const_cast<UPrimitiveComponent*>(hitActor->PrimComponent));
 		if (PrimComponent == nullptr)
 			return false;

@@ -44,9 +44,6 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category="DungeonUnit")
 	void ReactCombatAction(FCombatAction updatedState);
 	
-	UFUNCTION()
-	void ClearDamageTimer();
-	
 	UPROPERTY(EditAnywhere)
 	int Id;
 

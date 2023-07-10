@@ -80,7 +80,7 @@ void ADungeonUnitActor::CreateDynamicMaterials()
 	auto HealthBarWidgett = Cast<UHealthBarWidget>(HealthBarComponent->GetWidget());
 
 	auto ResourceObject = HealthBarWidgett->HealthBarDisplay->Brush.GetResourceObject();
-	auto Material = Cast<UMaterialInstance>(ResourceObject);
+	auto Material = Cast<UMaterialInterface>(ResourceObject);
 	if (!Material)
 		UE_DEBUG_BREAK();
 
@@ -221,11 +221,6 @@ struct FDungeonUnitActorHandler
 void ADungeonUnitActor::HandleGlobalEvent(const TDungeonAction& action)
 {
 	Visit(FDungeonUnitActorHandler{this}, action);
-}
-
-void ADungeonUnitActor::ClearDamageTimer()
-{
-	this->GetWorldTimerManager().ClearTimer(this->timerHandle);
 }
 
 // Called every frame

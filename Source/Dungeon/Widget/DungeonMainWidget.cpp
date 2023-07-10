@@ -108,12 +108,14 @@ bool UDungeonMainWidget::Initialize()
 
 	FSlateApplication::Get().OnFocusChanging().AddUObject(this, &UDungeonMainWidget::OnFocusChanged);
 
-	MainMapMenu->EndTurn->OnClicked.AddDynamic(this, &UDungeonMainWidget::OnEndTurnClicked);
+	MainMapMenu->EndTurn->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnEndTurnClicked);
+	// MainMapMenu->Units->OnClicked.AddUniqueDynamic(this, );
+	
 	Move->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnMoveClicked);
 	Attack->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnAttackClicked);
 	Wait->OnClicked.AddUniqueDynamic(this, &UDungeonMainWidget::OnWaitClicked);
 
-	auto visibilityCheck = [](auto&& widget, auto&& dontShow)
+	auto visibilityCheck = [](const auto& widget, const auto& dontShow)
 	{
 		return [ dontShow = DUNGEON_FOWARD(dontShow), widget = DUNGEON_FOWARD(widget)]
 		{
